@@ -1,0 +1,186 @@
+# User Story Template for Elixir/Phoenix Projects
+# Copy this template to create new stories in stories/ directory
+# Example: stories/STORY-001.yaml
+
+story:
+  id: STORY-###
+  title: "[Short descriptive title]"
+  status: ready_for_dev  # ready_for_dev, in_progress, in_review, completed, blocked
+  type: feature  # feature, bug, chore, spike
+  priority: medium  # high, medium, low
+  size: M  # XS (<2h), S (2-4h), M (4-8h), L (1-2d), XL (2+d - should be split!)
+  assigned_agent: elixir-dev  # elixir-dev, elixir-qa, elixir-architect, elixir-sm
+  created_date: 2024-01-15
+  updated_date: 2024-01-15
+
+user_story: |
+  As a [role/persona]
+  I want to [action/capability]
+  So that [business value/benefit]
+
+  Example:
+  As a customer
+  I want to search for available appointment slots
+  So that I can book an appointment at a convenient time
+
+acceptance_criteria:
+  - scenario: "Basic search functionality"
+    given: "I am on the appointments page"
+    when: "I search for slots on a specific date"
+    then:
+      - "I see all available time slots for that date"
+      - "The slots are sorted by time"
+      - "Fully booked slots are not shown"
+
+  - scenario: "Empty state"
+    given: "No slots are available for the selected date"
+    when: "I search for a date"
+    then:
+      - "I see a message 'No appointments available for this date'"
+      - "I see a link to view the next available date"
+
+  - scenario: "Slot reservation"
+    given: "I select a time slot"
+    when: "I click 'Book Appointment'"
+    then:
+      - "The slot is reserved for 10 minutes"
+      - "I am redirected to the booking form"
+
+technical_tasks:
+  context:
+    - "Create Appointments.list_available_slots/2 function"
+    - "Add database query with proper indices for date lookups"
+    - "Implement slot reservation logic with TTL expiration"
+    - "Write comprehensive context tests (happy path + errors)"
+
+  liveview:
+    - "Create AppointmentLive.Search LiveView module"
+    - "Implement mount with streams for slots"
+    - "Add search event handler with filters"
+    - "Build template with phx-update='stream' for slots"
+    - "Add empty state handling"
+    - "Write LiveView tests (mount, search, reservation)"
+
+  real_time:
+    - "Subscribe to 'appointments:slots' PubSub topic when connected"
+    - "Broadcast slot updates on booking/cancellation"
+    - "Add handle_info for real-time slot availability updates"
+    - "Test concurrent bookings between multiple users"
+
+  performance:
+    - "Add database index on (location_id, date) for fast lookups"
+    - "Implement caching for popular locations/dates"
+    - "Add phx-debounce='300' on search input"
+    - "Monitor N+1 queries during testing"
+
+dependencies:
+  - story_id: STORY-120
+    description: "Appointment schema must exist with location/date fields"
+    status: completed
+
+  - migration: "20240115_add_slot_reservation_tracking"
+    description: "Add reserved_until:datetime to appointments table"
+
+  - external: "ElevenLabs API integration for voice confirmations"
+    status: optional
+
+non_functional_requirements:
+  performance:
+    - "Search query completes in < 100ms for up to 10,000 appointments"
+    - "Support 100 concurrent users searching simultaneously"
+    - "Cache popular location/date combinations for 5 minutes"
+
+  security:
+    - "Users can only see slots for their allowed locations (tenant isolation)"
+    - "Validate all date inputs to prevent injection attacks"
+    - "Rate limit search to 10 requests per minute per user"
+
+  scalability:
+    - "Pagination with 50 slots per page"
+    - "Use streams in LiveView to avoid memory bloat"
+
+  observability:
+    - "Log all search queries with filters for analytics"
+    - "Track slot reservation expiration metrics"
+    - "Alert if search response time > 500ms"
+
+edge_cases:
+  - "What happens when user's reservation expires during booking?"
+  - "How to handle timezone differences for appointments?"
+  - "What if location is deleted while slots are being displayed?"
+  - "Handle concurrent booking of same slot by multiple users"
+
+testing_strategy:
+  unit_tests:
+    - "Context functions (list_available_slots, reserve_slot, release_slot)"
+    - "Changeset validations (date ranges, conflicts)"
+    - "Edge cases (expired reservations, concurrent bookings)"
+
+  integration_tests:
+    - "LiveView mount with populated slots"
+    - "Search with various filters (date, location, provider)"
+    - "Real-time updates when another user books a slot"
+    - "Optimistic UI updates on reservation"
+
+  performance_tests:
+    - "Load test with 1000 concurrent slot searches"
+    - "Measure query performance with 100k appointment records"
+
+notes:
+  - "Slots should refresh automatically every 30 seconds via LiveView"
+  - "Consider adding countdown timer for reserved slots"
+  - "Future enhancement: Add slot preference persistence per user"
+  - "Monitor for N+1 queries when loading provider/location associations"
+
+checklists:
+  before_starting:
+    - "[ ] Dependencies verified (STORY-120 completed)"
+    - "[ ] Design reviewed with architect"
+    - "[ ] Database schema designed"
+    - "[ ] PubSub topics planned"
+
+  during_development:
+    - "[ ] Follow Phoenix checklist (priv/checklists/phoenix-checklist.md)"
+    - "[ ] Follow Ecto checklist (priv/checklists/ecto-checklist.md)"
+    - "[ ] Follow LiveView checklist (priv/checklists/liveview-checklist.md)"
+    - "[ ] Write tests BEFORE implementation (TDD)"
+    - "[ ] Run mix test frequently"
+
+  before_completing:
+    - "[ ] All acceptance criteria met"
+    - "[ ] All tests passing (mix test)"
+    - "[ ] No Credo warnings (mix credo --strict)"
+    - "[ ] No Dialyzer warnings (mix dialyzer)"
+    - "[ ] Code formatted (mix format)"
+    - "[ ] Documentation complete (@doc on public functions)"
+    - "[ ] Performance tested (no N+1 queries)"
+    - "[ ] Security review complete"
+    - "[ ] Edge cases handled"
+    - "[ ] Real-time updates working"
+
+qa_validation:
+  test_scenarios:
+    - "Search for slots on various dates and locations"
+    - "Book a slot and verify reservation timeout works"
+    - "Open multiple browser tabs and verify real-time sync"
+    - "Test with slow network (phx-disable-with shows)"
+    - "Test empty states (no slots available)"
+    - "Test error states (network failure, invalid dates)"
+
+  performance_criteria:
+    - "Search responds in < 100ms"
+    - "Page loads in < 1s with 100 slots"
+    - "No memory leaks after 100 searches"
+    - "Real-time updates appear within 1 second"
+
+definition_of_done:
+  - "[ ] All acceptance criteria met and tested"
+  - "[ ] All technical tasks completed"
+  - "[ ] Code reviewed and approved"
+  - "[ ] All tests passing (100% pass rate)"
+  - "[ ] Quality gates passed (credo, dialyzer, format)"
+  - "[ ] Documentation complete"
+  - "[ ] Deployed to staging and verified"
+  - "[ ] Performance acceptable"
+  - "[ ] Security reviewed"
+  - "[ ] Product owner acceptance received"

@@ -1,0 +1,360 @@
+# BMAD Configuration for Elixir/Phoenix Projects
+# Copy this to .bmad/config.yaml in your project root
+
+bmad:
+  version: 1.0
+  project_name: my_phoenix_app
+  framework: phoenix
+  language: elixir
+
+  # Project metadata
+  description: "Phoenix LiveView application for [purpose]"
+  repository: "https://github.com/org/my_phoenix_app"
+  elixir_version: "~> 1.14"
+  phoenix_version: "~> 1.7"
+  ecto_version: "~> 3.10"
+
+# Agent configuration
+agents:
+  # Primary development agent
+  - id: elixir-dev
+    name: "Senior Elixir/Phoenix Engineer"
+    role: development
+    enabled: true
+    tools:
+      - mix
+      - iex
+      - dialyzer
+      - credo
+    responsibilities:
+      - "Implement features following existing patterns"
+      - "Write comprehensive tests (TDD approach)"
+      - "Ensure code quality (credo, dialyzer, format)"
+      - "Follow Phoenix/Ecto best practices"
+
+  # Quality assurance agent
+  - id: elixir-qa
+    name: "Quality Assurance & Testing Specialist"
+    role: quality_assurance
+    enabled: true
+    quality_gates:
+      - tests: "mix test - all must pass"
+      - credo: "mix credo --strict - no warnings"
+      - dialyzer: "mix dialyzer - no warnings"
+      - format: "mix format --check-formatted"
+      - compile: "mix compile --warnings-as-errors"
+    coverage_target: 80
+
+  # System architecture agent
+  - id: elixir-architect
+    name: "OTP & System Design Architect"
+    role: architecture
+    enabled: true
+    focus_areas:
+      - "OTP supervision trees"
+      - "GenServer design patterns"
+      - "Phoenix context boundaries"
+      - "Database schema design"
+      - "Fault tolerance strategies"
+
+  # Project management agent
+  - id: elixir-sm
+    name: "Scrum Master & Story Manager"
+    role: project_management
+    enabled: true
+    responsibilities:
+      - "Create user stories from requirements"
+      - "Break down epics into stories"
+      - "Define acceptance criteria"
+      - "Coordinate agent collaboration"
+
+# Workflow configuration
+workflows:
+  greenfield_phoenix:
+    enabled: true
+    template: "priv/workflows/greenfield-phoenix.yaml"
+    triggers:
+      - "New Phoenix project creation"
+
+  add_context:
+    enabled: true
+    template: "priv/workflows/add-phoenix-context.yaml"
+    triggers:
+      - "Creating new bounded context"
+
+  add_liveview:
+    enabled: true
+    template: "priv/workflows/add-liveview-feature.yaml"
+    triggers:
+      - "Implementing LiveView feature"
+
+# Quality checklist configuration
+checklists:
+  phoenix:
+    enabled: true
+    path: "priv/checklists/phoenix-checklist.md"
+    enforce_on_commit: false
+
+  ecto:
+    enabled: true
+    path: "priv/checklists/ecto-checklist.md"
+    enforce_on_commit: false
+
+  liveview:
+    enabled: true
+    path: "priv/checklists/liveview-checklist.md"
+    enforce_on_commit: false
+
+# Task guide configuration
+task_guides:
+  - id: create-story
+    name: "Create User Story"
+    path: "priv/tasks/create-story.md"
+
+  - id: qa-gate
+    name: "Quality Gate Validation"
+    path: "priv/tasks/qa-gate.md"
+
+  - id: write-tests
+    name: "Write Comprehensive Tests"
+    path: "priv/tasks/write-tests.md"
+
+  - id: create-context
+    name: "Create Phoenix Context"
+    path: "priv/tasks/create-context.md"
+
+  - id: create-liveview
+    name: "Create LiveView Feature"
+    path: "priv/tasks/create-liveview.md"
+
+  - id: debugging
+    name: "Debug Elixir/Phoenix Application"
+    path: "priv/tasks/debugging.md"
+
+# Project structure
+directories:
+  stories: "stories/"
+  agents: ".bmad/agents/"
+  workflows: ".bmad/workflows/"
+  checklists: ".bmad/checklists/"
+  tasks: ".bmad/tasks/"
+
+# Git hooks configuration
+git_hooks:
+  pre_commit:
+    enabled: true
+    commands:
+      - "mix format"
+      - "mix compile --warnings-as-errors"
+      - "mix credo --strict"
+    auto_restage: true
+
+  commit_msg:
+    enabled: true
+    rules:
+      - "Block Claude Code attribution"
+      - "Imperative mood in subject"
+      - "No trailing periods in subject"
+
+  post_checkout:
+    enabled: true
+    reminders:
+      - "Check for pending migrations"
+      - "Update dependencies if mix.lock changed"
+
+  post_merge:
+    enabled: true
+    reminders:
+      - "Run mix deps.get if mix.exs changed"
+      - "Run mix ecto.migrate if migrations added"
+
+# Code quality standards
+quality_standards:
+  test_coverage:
+    minimum: 80
+    target: 90
+    exclude_patterns:
+      - "*/migrations/*"
+      - "*/seeds.exs"
+
+  complexity:
+    max_cyclomatic: 10
+    max_function_lines: 50
+    max_module_lines: 500
+
+  style:
+    formatter: mix_format
+    linter: credo
+    type_checker: dialyzer
+
+# Phoenix-specific configuration
+phoenix:
+  contexts:
+    # Define your bounded contexts
+    - name: Accounts
+      description: "User management, authentication, authorization"
+      schemas:
+        - User
+        - Role
+        - Permission
+
+    - name: Catalog
+      description: "Product management, categories, inventory"
+      schemas:
+        - Product
+        - Category
+        - Inventory
+
+  liveview:
+    default_layout: {MyAppWeb.Layouts, :app}
+    use_streams: true  # Always prefer streams over assigns for collections
+    subscribe_when_connected: true
+
+  routing:
+    api_prefix: "/api"
+    admin_prefix: "/admin"
+    live_sessions:
+      - name: :require_authenticated_user
+        on_mount: [{MyAppWeb.UserAuth, :ensure_authenticated}]
+      - name: :current_user
+        on_mount: [{MyAppWeb.UserAuth, :mount_current_user}]
+
+# Ecto configuration
+ecto:
+  migration_naming: "descriptive"  # Use descriptive names, not just "add_field"
+
+  schema_conventions:
+    timestamps: :utc_datetime
+    primary_key_type: :id  # or :binary_id for UUIDs
+    foreign_key_type: :id  # or :binary_id for UUIDs
+
+  query_optimization:
+    enable_query_logging: true  # in development
+    alert_on_n_plus_one: true
+    preload_associations: "recommended"
+
+# Testing configuration
+testing:
+  framework: ex_unit
+  async_tests: true
+  database_mode: sandbox
+
+  test_patterns:
+    unit_tests: "test/**/contexts/**/*_test.exs"
+    integration_tests: "test/**/controllers/**/*_test.exs"
+    liveview_tests: "test/**/live/**/*_test.exs"
+
+  coverage_tool: excoveralls
+  coverage_ignore:
+    - "*/migrations/*"
+    - "*/seeds.exs"
+    - "*/test/support/*"
+
+# Deployment configuration
+deployment:
+  strategy: releases  # Elixir releases
+  environments:
+    - development
+    - test
+    - staging
+    - production
+
+  health_check:
+    endpoint: "/health"
+    timeout: 5000
+
+  monitoring:
+    tools:
+      - logger
+      - telemetry
+    # Optional: AppSignal, Sentry, etc.
+
+# Documentation
+documentation:
+  generate_docs: true
+  tool: ex_doc
+  format: html
+
+  required_docs:
+    - module_doc: "All public modules"
+    - function_doc: "All public functions"
+    - examples: "Complex functions"
+
+# Environment-specific settings
+environments:
+  development:
+    database:
+      pool_size: 10
+      log: true
+
+    endpoint:
+      debug_errors: true
+      code_reloader: true
+
+  test:
+    database:
+      pool: Ecto.Adapters.SQL.Sandbox
+      pool_size: 10
+
+  production:
+    database:
+      pool_size: 20
+      log: false
+
+    endpoint:
+      cache_static_manifest: "priv/static/cache_manifest.json"
+
+# Custom project rules (optional)
+custom_rules:
+  # Add project-specific conventions here
+  - "All LiveView modules must end with 'Live' suffix"
+  - "All context modules in lib/my_app/[context]/"
+  - "All schemas in lib/my_app/[context]/[schema].ex"
+  - "All tests mirror the lib/ structure"
+  - "Use streams for all collections in LiveView"
+  - "Subscribe to PubSub only when connected?(socket)"
+  - "Forms always use to_form/1, never pass changeset to template"
+  - "No N+1 queries allowed - use preload or join"
+
+# Integration settings
+integrations:
+  # External services
+  external_apis:
+    - name: "ElevenLabs"
+      purpose: "Text-to-speech for voice calls"
+      docs: "https://elevenlabs.io/docs"
+
+  # Third-party libraries
+  key_dependencies:
+    - name: "Phoenix LiveView"
+      version: "~> 0.20"
+      purpose: "Real-time interactive UIs"
+
+    - name: "Ecto"
+      version: "~> 3.10"
+      purpose: "Database wrapper and query DSL"
+
+    - name: "Oban"
+      version: "~> 2.15"
+      purpose: "Background job processing"
+      optional: true
+
+# Notes
+notes: |
+  This configuration defines the BMAD setup for an Elixir/Phoenix project.
+
+  Key principles:
+  1. Follow existing patterns - never introduce new approaches
+  2. Test-driven development (TDD) - tests first, code second
+  3. Quality gates enforced - credo, dialyzer, format, tests
+  4. LiveView best practices - streams, connected?, to_form/1
+  5. Ecto best practices - preload, constraints, indices
+  6. Context boundaries respected - no cross-context queries
+
+  Workflow:
+  1. Create story (elixir-sm)
+  2. Implement feature (elixir-dev)
+  3. Run quality gates (elixir-qa)
+  4. Deploy to staging
+  5. Product owner acceptance
+  6. Deploy to production
