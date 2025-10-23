@@ -1,0 +1,635 @@
+# BMAD Workflow: Add Background Job
+# Use this workflow when adding background processing to Phoenix
+
+name: Add Background Job
+description: Complete workflow for implementing background jobs with Oban or GenServer
+type: feature
+framework: phoenix_background_jobs
+complexity: medium-high
+agents_involved:
+  - elixir-architect
+  - elixir-dev
+  - elixir-qa
+
+prerequisites:
+  - Decision made: Oban vs GenServer/Task
+  - Understanding of job requirements (scheduling, retry, concurrency)
+  - Database setup (for Oban)
+  - Supervision tree understanding
+
+steps:
+  - name: Choose Background Job Strategy
+    agent: elixir-architect
+    duration: 15-30min
+    decision_matrix:
+      use_oban_when:
+        - "Need persistent job queue (survives restarts)"
+        - "Require retry logic with backoff"
+        - "Need job scheduling (cron-like)"
+        - "Want job monitoring and observability"
+        - "Processing user-triggered async operations"
+
+      use_genserver_when:
+        - "Simple periodic tasks"
+        - "In-memory state management needed"
+        - "Real-time processing requirements"
+        - "Don't want database dependency"
+
+      use_task_when:
+        - "One-off fire-and-forget operations"
+        - "No retry needed"
+        - "Short-lived operations"
+
+    recommendation: "Use Oban for production background jobs, GenServer for internal services"
+
+  - name: Setup Oban (if chosen)
+    agent: elixir-dev
+    duration: 30min
+    tasks:
+      - Add Oban dependency to mix.exs
+      - Create Oban migration
+      - Configure Oban in application.ex
+      - Set up queues and concurrency
+    setup: |
+      # In mix.exs
+      {:oban, "~> 2.15"}
+
+      # Generate migration
+      mix ecto.gen.migration add_oban_jobs_table
+
+      # In migration
+      def up do
+        Oban.Migration.up(version: 12)
+      end
+
+      def down do
+        Oban.Migration.down(version: 1)
+      end
+
+      # In config/config.exs
+      config :my_app, Oban,
+        repo: MyApp.Repo,
+        plugins: [
+          Oban.Plugins.Pruner,
+          {Oban.Plugins.Cron,
+           crontab: [
+             {"0 2 * * *", MyApp.Workers.DailyReport},
+             {"*/15 * * * *", MyApp.Workers.StaleDataCleanup}
+           ]}
+        ],
+        queues: [default: 10, events: 50, media: 5, mailers: 20]
+
+      # In application.ex
+      children = [
+        MyApp.Repo,
+        {Oban, Application.fetch_env!(:my_app, Oban)}
+      ]
+
+  - name: Create Oban Worker
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Create worker module
+      - Implement perform/1 function
+      - Add error handling
+      - Configure queue and retry options
+    pattern: |
+      defmodule MyApp.Workers.EmailWorker do
+        use Oban.Worker,
+          queue: :mailers,
+          max_attempts: 3,
+          priority: 0,
+          tags: ["email", "notification"]
+
+        alias MyApp.Mailer
+        alias MyApp.Accounts
+
+        @impl Oban.Worker
+        def perform(%Oban.Job{args: %{"user_id" => user_id, "template" => template}}) do
+          with {:ok, user} <- Accounts.get_user(user_id),
+               {:ok, _} <- Mailer.send_email(user, template) do
+            :ok
+          else
+            {:error, :not_found} ->
+              # Don't retry if user doesn't exist
+              {:discard, "User not found"}
+
+            {:error, reason} ->
+              # Will retry based on max_attempts
+              {:error, reason}
+          end
+        end
+
+        # Scheduled job example
+        @impl Oban.Worker
+        def perform(%Oban.Job{args: %{"type" => "daily_summary"}}) do
+          users = Accounts.list_active_users()
+
+          Enum.each(users, fn user ->
+            summary = generate_daily_summary(user)
+            Mailer.send_daily_summary(user, summary)
+          end)
+
+          :ok
+        end
+
+        # Helper to enqueue job
+        def enqueue_email(user_id, template) do
+          %{user_id: user_id, template: template}
+          |> new()
+          |> Oban.insert()
+        end
+
+        # Schedule for later
+        def schedule_email(user_id, template, scheduled_at) do
+          %{user_id: user_id, template: template}
+          |> new(scheduled_at: scheduled_at)
+          |> Oban.insert()
+        end
+      end
+
+  - name: Create GenServer Worker (if chosen)
+    agent: elixir-architect
+    duration: 1-2hrs
+    tasks:
+      - Create GenServer module
+      - Implement init/1, handle_call/3, handle_cast/2, handle_info/2
+      - Add to supervision tree
+      - Implement scheduling with Process.send_after
+    pattern: |
+      defmodule MyApp.Workers.CacheWarmer do
+        use GenServer
+        require Logger
+
+        @refresh_interval :timer.minutes(15)
+
+        # Client API
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        def refresh_cache do
+          GenServer.cast(__MODULE__, :refresh_cache)
+        end
+
+        def get_stats do
+          GenServer.call(__MODULE__, :get_stats)
+        end
+
+        # Server Callbacks
+
+        @impl true
+        def init(_opts) do
+          # Schedule initial cache warm
+          send(self(), :warm_cache)
+
+          state = %{
+            last_refreshed: nil,
+            cache_size: 0,
+            refresh_count: 0
+          }
+
+          {:ok, state}
+        end
+
+        @impl true
+        def handle_info(:warm_cache, state) do
+          Logger.info("Warming cache...")
+
+          # Perform cache warming
+          cache_data = load_cache_data()
+          cache_size = warm_cache(cache_data)
+
+          # Schedule next refresh
+          Process.send_after(self(), :warm_cache, @refresh_interval)
+
+          new_state = %{state |
+            last_refreshed: DateTime.utc_now(),
+            cache_size: cache_size,
+            refresh_count: state.refresh_count + 1
+          }
+
+          {:noreply, new_state}
+        end
+
+        @impl true
+        def handle_cast(:refresh_cache, state) do
+          # Immediate refresh requested
+          send(self(), :warm_cache)
+          {:noreply, state}
+        end
+
+        @impl true
+        def handle_call(:get_stats, _from, state) do
+          stats = %{
+            last_refreshed: state.last_refreshed,
+            cache_size: state.cache_size,
+            refresh_count: state.refresh_count
+          }
+          {:reply, stats, state}
+        end
+
+        # Private Functions
+
+        defp load_cache_data do
+          # Load data that needs to be cached
+          MyApp.Catalog.list_active_products()
+        end
+
+        defp warm_cache(data) do
+          # Warm the cache with data
+          Enum.each(data, fn item ->
+            MyApp.Cache.put("product:#{item.id}", item)
+          end)
+
+          length(data)
+        end
+      end
+
+      # Add to supervision tree in application.ex
+      children = [
+        MyApp.Repo,
+        MyApp.Workers.CacheWarmer
+      ]
+
+  - name: Add to Supervision Tree
+    agent: elixir-architect
+    duration: 15-30min
+    tasks:
+      - Decide on restart strategy
+      - Add worker to application.ex
+      - Consider DynamicSupervisor if workers are created dynamically
+    patterns:
+      simple_worker: |
+        # In application.ex
+        children = [
+          MyApp.Repo,
+          {MyApp.Workers.CacheWarmer, []}
+        ]
+
+      with_restart_strategy: |
+        children = [
+          {MyApp.Workers.CacheWarmer, []},
+          # Restart: permanent (always restart)
+          #          temporary (never restart)
+          #          transient (restart only if abnormal exit)
+          Supervisor.child_spec(
+            {MyApp.Workers.DataSync, []},
+            restart: :transient
+          )
+        ]
+
+      dynamic_workers: |
+        # For workers created on demand
+        children = [
+          {DynamicSupervisor, name: MyApp.WorkerSupervisor, strategy: :one_for_one}
+        ]
+
+        # Start worker dynamically
+        DynamicSupervisor.start_child(
+          MyApp.WorkerSupervisor,
+          {MyApp.Workers.UserSessionWorker, user_id: user_id}
+        )
+
+  - name: Implement Job Logic
+    agent: elixir-dev
+    duration: 1-3hrs
+    considerations:
+      - Idempotency: Can job run multiple times safely?
+      - Error handling: What happens on failure?
+      - Timeout: How long should job run?
+      - Dependencies: What if dependent service is down?
+      - Data consistency: Handle concurrent modifications
+    patterns:
+      idempotent_operation: |
+        def perform(%{args: %{"order_id" => order_id}}) do
+          # Check if already processed
+          case MyApp.Orders.get_order(order_id) do
+            {:ok, %{status: :processed}} ->
+              # Already processed, don't do it again
+              :ok
+
+            {:ok, order} ->
+              # Process the order
+              MyApp.Orders.process_order(order)
+
+            {:error, :not_found} ->
+              {:discard, "Order not found"}
+          end
+        end
+
+      with_timeout: |
+        def perform(%{args: args}) do
+          # Set timeout for long-running operation
+          task = Task.async(fn ->
+            expensive_operation(args)
+          end)
+
+          case Task.await(task, :timer.minutes(5)) do
+            {:ok, result} -> {:ok, result}
+            {:error, reason} -> {:error, reason}
+          end
+        catch
+          :exit, {:timeout, _} ->
+            # Operation timed out
+            {:error, :timeout}
+        end
+
+      batch_processing: |
+        def perform(%{args: %{"batch_size" => batch_size}}) do
+          # Process in batches to avoid memory issues
+          MyApp.Products
+          |> MyApp.Repo.stream()
+          |> Stream.chunk_every(batch_size)
+          |> Stream.each(&process_batch/1)
+          |> Stream.run()
+
+          :ok
+        end
+
+        defp process_batch(products) do
+          Enum.each(products, &update_product/1)
+        end
+
+  - name: Add Monitoring and Observability
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Add logging for job start/end
+      - Track job metrics (duration, success rate)
+      - Add Telemetry events
+      - Set up alerts for failures
+    pattern: |
+      # With Telemetry
+      def perform(%{args: args}) do
+        start_time = System.monotonic_time()
+
+        :telemetry.execute(
+          [:my_app, :worker, :start],
+          %{system_time: System.system_time()},
+          %{worker: __MODULE__, args: args}
+        )
+
+        result = do_work(args)
+
+        duration = System.monotonic_time() - start_time
+
+        :telemetry.execute(
+          [:my_app, :worker, :stop],
+          %{duration: duration},
+          %{worker: __MODULE__, result: result}
+        )
+
+        result
+      end
+
+      # Attach handlers in application.ex
+      :telemetry.attach(
+        "log-worker-execution",
+        [:my_app, :worker, :stop],
+        &MyApp.Telemetry.handle_worker_event/4,
+        nil
+      )
+
+  - name: Implement Error Handling and Retry
+    agent: elixir-dev
+    duration: 30min - 1hr
+    strategies:
+      oban_retry:
+        config: |
+          use Oban.Worker,
+            max_attempts: 5,
+            backoff: :exponential  # or custom function
+
+        custom_backoff: |
+          def backoff(%Job{attempt: attempt}) do
+            # Custom backoff: 30s, 1m, 5m, 15m, 30m
+            trunc(:math.pow(2, attempt) * 30)
+          end
+
+      genserver_retry: |
+        def handle_info(:perform_task, state) do
+          case do_task() do
+            :ok ->
+              schedule_next_run()
+              {:noreply, %{state | errors: 0}}
+
+            {:error, reason} ->
+              Logger.error("Task failed: #{inspect(reason)}")
+
+              new_errors = state.errors + 1
+
+              if new_errors < 3 do
+                # Retry with backoff
+                Process.send_after(self(), :perform_task, backoff_time(new_errors))
+                {:noreply, %{state | errors: new_errors}}
+              else
+                # Too many errors, give up
+                Logger.error("Task failed after 3 attempts")
+                {:noreply, %{state | errors: 0, status: :failed}}
+              end
+          end
+        end
+
+        defp backoff_time(attempt), do: :timer.seconds(trunc(:math.pow(2, attempt)))
+
+  - name: Write Tests
+    agent: elixir-qa
+    duration: 2-3hrs
+    test_categories:
+      oban_tests:
+        - Test job enqueues correctly
+        - Test perform/1 executes successfully
+        - Test error handling and retry
+        - Test scheduled jobs
+        - Test job cancellation
+
+      genserver_tests:
+        - Test start_link initializes correctly
+        - Test periodic tasks execute
+        - Test handle_call/cast/info
+        - Test supervision restart behavior
+
+    patterns:
+      oban_test: |
+        defmodule MyApp.Workers.EmailWorkerTest do
+          use MyApp.DataCase, async: true
+          use Oban.Testing, repo: MyApp.Repo
+
+          alias MyApp.Workers.EmailWorker
+
+          describe "perform/1" do
+            test "sends email successfully" do
+              user = user_fixture()
+
+              assert :ok =
+                perform_job(EmailWorker, %{
+                  user_id: user.id,
+                  template: "welcome"
+                })
+
+              # Verify email was sent
+              assert_email_sent(to: user.email)
+            end
+
+            test "discards job when user not found" do
+              assert {:discard, "User not found"} =
+                perform_job(EmailWorker, %{
+                  user_id: 999,
+                  template: "welcome"
+                })
+            end
+
+            test "retries on temporary failure" do
+              user = user_fixture()
+
+              # Mock temporary failure
+              expect(MyApp.Mailer, :send_email, fn _, _ ->
+                {:error, :smtp_timeout}
+              end)
+
+              assert {:error, :smtp_timeout} =
+                perform_job(EmailWorker, %{
+                  user_id: user.id,
+                  template: "welcome"
+                })
+            end
+
+            test "enqueues job correctly" do
+              user = user_fixture()
+
+              assert {:ok, %Oban.Job{}} =
+                EmailWorker.enqueue_email(user.id, "welcome")
+
+              # Verify job in database
+              assert_enqueued(worker: EmailWorker, args: %{
+                user_id: user.id,
+                template: "welcome"
+              })
+            end
+          end
+        end
+
+      genserver_test: |
+        defmodule MyApp.Workers.CacheWarmerTest do
+          use MyApp.DataCase
+          alias MyApp.Workers.CacheWarmer
+
+          describe "start_link/1" do
+            test "starts successfully" do
+              assert {:ok, pid} = CacheWarmer.start_link([])
+              assert Process.alive?(pid)
+            end
+          end
+
+          describe "cache warming" do
+            test "warms cache on start" do
+              {:ok, _pid} = start_supervised(CacheWarmer)
+
+              # Wait for initial cache warm
+              :timer.sleep(100)
+
+              stats = CacheWarmer.get_stats()
+              assert stats.cache_size > 0
+              assert stats.refresh_count == 1
+            end
+
+            test "refreshes cache periodically" do
+              {:ok, _pid} = start_supervised(CacheWarmer)
+
+              initial_stats = CacheWarmer.get_stats()
+
+              # Trigger refresh
+              CacheWarmer.refresh_cache()
+              :timer.sleep(100)
+
+              new_stats = CacheWarmer.get_stats()
+              assert new_stats.refresh_count > initial_stats.refresh_count
+            end
+          end
+        end
+
+  - name: Add Job Monitoring
+    agent: elixir-dev
+    duration: 30min
+    tasks:
+      - Create admin interface to view jobs
+      - Add metrics collection
+      - Set up failure alerts
+    tools:
+      - Oban Web (for Oban)
+      - Phoenix LiveDashboard
+      - Custom LiveView for job stats
+
+  - name: Quality Validation
+    agent: elixir-qa
+    duration: 30min - 1hr
+    checks:
+      - Jobs execute successfully
+      - Error handling works correctly
+      - Retry logic functions as expected
+      - Jobs don't leak memory
+      - Performance acceptable under load
+      - Monitoring in place
+    success_criteria:
+      - All tests passing
+      - Jobs survive application restart (if persistent)
+      - Failed jobs retry appropriately
+      - No memory leaks
+
+checklist:
+  design:
+    - [ ] Background job strategy chosen (Oban vs GenServer)
+    - [ ] Job requirements clear (scheduling, retry, concurrency)
+    - [ ] Error handling strategy defined
+    - [ ] Monitoring approach decided
+
+  implementation:
+    - [ ] Oban configured (if chosen)
+    - [ ] Worker module created with perform/1
+    - [ ] Added to supervision tree
+    - [ ] Error handling implemented
+    - [ ] Retry logic configured
+    - [ ] Logging added
+
+  testing:
+    - [ ] Job execution tested
+    - [ ] Error cases covered
+    - [ ] Retry behavior validated
+    - [ ] Performance tested
+    - [ ] Memory usage monitored
+
+  production:
+    - [ ] Monitoring in place
+    - [ ] Alerts configured for failures
+    - [ ] Job queue sized appropriately
+    - [ ] Concurrency limits set
+    - [ ] Documentation complete
+
+best_practices:
+  - "Make jobs idempotent (safe to run multiple times)"
+  - "Add timeout to prevent runaway jobs"
+  - "Use exponential backoff for retries"
+  - "Process in batches for large datasets"
+  - "Monitor job metrics and failures"
+  - "Test retry and error handling"
+  - "Document job purpose and behavior"
+
+common_patterns:
+  scheduled_jobs:
+    - "Daily reports at 2 AM"
+    - "Cleanup stale data every hour"
+    - "Send weekly summaries on Mondays"
+
+  event_driven_jobs:
+    - "Send email after user registration"
+    - "Process uploaded file"
+    - "Generate invoice after order"
+
+  periodic_maintenance:
+    - "Refresh cache every 15 minutes"
+    - "Sync with external API hourly"
+    - "Archive old records monthly"
+
+estimated_time: 3-6 hours (depending on complexity)

@@ -1,0 +1,634 @@
+# BMAD Workflow: Add REST API Endpoint
+# Use this workflow when adding JSON API endpoints to Phoenix
+
+name: Add REST API Endpoint
+description: Complete workflow for implementing RESTful JSON API endpoints
+type: feature
+framework: phoenix_api
+complexity: medium
+agents_involved:
+  - elixir-dev
+  - phoenix-expert
+  - ecto-specialist
+  - elixir-qa
+
+prerequisites:
+  - Phoenix installed with JSON API support
+  - Context and schemas exist for data being exposed
+  - Understanding of RESTful conventions
+  - API authentication strategy decided
+
+steps:
+  - name: Plan API Design
+    agent: elixir-dev
+    duration: 30min - 1hr
+    questions:
+      - What resources are being exposed?
+      - What HTTP methods needed? (GET, POST, PUT, PATCH, DELETE)
+      - What authentication/authorization required?
+      - What data should be included in responses?
+      - Do we need pagination? Filtering? Sorting?
+      - What's the versioning strategy?
+    deliverable: API endpoint specification
+
+  - name: Design JSON Response Structure
+    agent: elixir-dev
+    duration: 15-30min
+    considerations:
+      - Follow JSON:API spec or custom format?
+      - Include metadata (pagination, counts)?
+      - Error response format
+      - Field naming convention (camelCase vs snake_case)
+    example_response: |
+      {
+        "data": {
+          "id": 123,
+          "type": "product",
+          "attributes": {
+            "name": "Widget",
+            "price": "9.99",
+            "sku": "WID-001"
+          },
+          "relationships": {
+            "category": {
+              "data": {"id": 5, "type": "category"}
+            }
+          }
+        },
+        "meta": {
+          "total_count": 42
+        }
+      }
+
+  - name: Create JSON View
+    agent: phoenix-expert
+    duration: 30min - 1hr
+    tasks:
+      - Create view module in lib/my_app_web/controllers/api/
+      - Implement render functions for different actions
+      - Handle errors and validation failures
+      - Include pagination metadata if needed
+    pattern: |
+      defmodule MyAppWeb.API.ProductJSON do
+        alias MyApp.Catalog.Product
+
+        def index(%{products: products, meta: meta}) do
+          %{
+            data: for(product <- products, do: data(product)),
+            meta: meta
+          }
+        end
+
+        def show(%{product: product}) do
+          %{data: data(product)}
+        end
+
+        def error(%{changeset: changeset}) do
+          %{errors: translate_errors(changeset)}
+        end
+
+        defp data(%Product{} = product) do
+          %{
+            id: product.id,
+            type: "product",
+            attributes: %{
+              name: product.name,
+              price: product.price,
+              sku: product.sku,
+              active: product.active
+            },
+            inserted_at: product.inserted_at,
+            updated_at: product.updated_at
+          }
+        end
+
+        defp translate_errors(changeset) do
+          Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+            Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+              opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+            end)
+          end)
+        end
+      end
+
+  - name: Implement Controller
+    agent: phoenix-expert
+    duration: 1-2hrs
+    tasks:
+      - Create controller in lib/my_app_web/controllers/api/
+      - Implement RESTful actions (index, show, create, update, delete)
+      - Add fallback controller for error handling
+      - Return proper HTTP status codes
+      - Handle pagination and filtering
+    pattern: |
+      defmodule MyAppWeb.API.ProductController do
+        use MyAppWeb, :controller
+
+        alias MyApp.Catalog
+        alias MyApp.Catalog.Product
+
+        action_fallback MyAppWeb.FallbackController
+
+        def index(conn, params) do
+          page = Map.get(params, "page", "1") |> String.to_integer()
+          per_page = Map.get(params, "per_page", "20") |> String.to_integer()
+          filters = Map.get(params, "filters", %{})
+
+          with {:ok, result} <- Catalog.list_products_paginated(filters, page, per_page) do
+            meta = %{
+              page: page,
+              per_page: per_page,
+              total_count: result.total_count,
+              total_pages: result.total_pages
+            }
+
+            conn
+            |> put_status(:ok)
+            |> render(:index, products: result.entries, meta: meta)
+          end
+        end
+
+        def show(conn, %{"id" => id}) do
+          with {:ok, product} <- Catalog.get_product(id) do
+            conn
+            |> put_status(:ok)
+            |> render(:show, product: product)
+          end
+        end
+
+        def create(conn, %{"product" => product_params}) do
+          with {:ok, %Product{} = product} <- Catalog.create_product(product_params) do
+            conn
+            |> put_status(:created)
+            |> put_resp_header("location", ~p"/api/products/#{product}")
+            |> render(:show, product: product)
+          end
+        end
+
+        def update(conn, %{"id" => id, "product" => product_params}) do
+          with {:ok, product} <- Catalog.get_product(id),
+               {:ok, %Product{} = product} <- Catalog.update_product(product, product_params) do
+            conn
+            |> put_status(:ok)
+            |> render(:show, product: product)
+          end
+        end
+
+        def delete(conn, %{"id" => id}) do
+          with {:ok, product} <- Catalog.get_product(id),
+               {:ok, %Product{}} <- Catalog.delete_product(product) do
+            send_resp(conn, :no_content, "")
+          end
+        end
+      end
+
+  - name: Create Fallback Controller
+    agent: phoenix-expert
+    duration: 15-30min
+    tasks:
+      - Create fallback controller for error handling
+      - Handle common errors (not_found, validation, unauthorized)
+      - Return consistent error responses
+    pattern: |
+      defmodule MyAppWeb.FallbackController do
+        use MyAppWeb, :controller
+
+        def call(conn, {:error, :not_found}) do
+          conn
+          |> put_status(:not_found)
+          |> put_view(json: MyAppWeb.ErrorJSON)
+          |> render(:"404")
+        end
+
+        def call(conn, {:error, :unauthorized}) do
+          conn
+          |> put_status(:forbidden)
+          |> put_view(json: MyAppWeb.ErrorJSON)
+          |> render(:"403")
+        end
+
+        def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
+          conn
+          |> put_status(:unprocessable_entity)
+          |> put_view(json: MyAppWeb.ChangesetJSON)
+          |> render(:error, changeset: changeset)
+        end
+      end
+
+  - name: Add Routes
+    agent: phoenix-expert
+    duration: 15min
+    tasks:
+      - Add routes to router.ex in /api scope
+      - Use proper pipeline (:api, not :browser)
+      - Group related resources
+      - Consider API versioning (e.g., /api/v1/)
+    pattern: |
+      scope "/api", MyAppWeb.API, as: :api do
+        pipe_through :api
+
+        # Optional: Add authentication
+        # pipe_through :require_api_token
+
+        resources "/products", ProductController, except: [:new, :edit]
+        resources "/categories", CategoryController, only: [:index, :show]
+
+        # Custom routes
+        get "/products/:id/related", ProductController, :related
+        post "/products/:id/publish", ProductController, :publish
+      end
+
+  - name: Implement Request Validation
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Validate request parameters
+      - Use Ecto.Changeset for input validation
+      - Return clear validation errors
+      - Handle missing required fields
+    pattern: |
+      # In context
+      def create_product(attrs) do
+        %Product{}
+        |> Product.changeset(attrs)
+        |> Repo.insert()
+      end
+
+      # In schema
+      def changeset(product, attrs) do
+        product
+        |> cast(attrs, [:name, :price, :sku, :category_id])
+        |> validate_required([:name, :price, :sku])
+        |> validate_number(:price, greater_than: 0)
+        |> unique_constraint(:sku)
+        |> foreign_key_constraint(:category_id)
+      end
+
+  - name: Add Authentication (if needed)
+    agent: elixir-dev
+    duration: 1-2hrs
+    strategies:
+      api_token:
+        - "Use bearer token authentication"
+        - "Store tokens in database or JWT"
+        - "Validate token in plug pipeline"
+
+      oauth:
+        - "Use OAuth2 for third-party access"
+        - "Implement authorization code flow"
+        - "Return access and refresh tokens"
+
+    pattern: |
+      # Token authentication plug
+      defmodule MyAppWeb.Plugs.APIAuth do
+        import Plug.Conn
+
+        def init(opts), do: opts
+
+        def call(conn, _opts) do
+          with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
+               {:ok, user} <- verify_token(token) do
+            assign(conn, :current_user, user)
+          else
+            _ ->
+              conn
+              |> put_status(:unauthorized)
+              |> put_view(json: MyAppWeb.ErrorJSON)
+              |> Phoenix.Controller.render(:"401")
+              |> halt()
+          end
+        end
+
+        defp verify_token(token) do
+          # Verify token and return user
+          MyApp.Accounts.verify_api_token(token)
+        end
+      end
+
+      # In router
+      pipeline :api_authenticated do
+        plug :api
+        plug MyAppWeb.Plugs.APIAuth
+      end
+
+  - name: Implement Pagination
+    agent: ecto-specialist
+    duration: 30min - 1hr
+    tasks:
+      - Add pagination to context functions
+      - Return total count and page metadata
+      - Support page and per_page parameters
+      - Add limit to prevent excessive results
+    pattern: |
+      def list_products_paginated(filters, page \\\\ 1, per_page \\\\ 20) do
+        # Limit per_page to reasonable max
+        per_page = min(per_page, 100)
+        offset = (page - 1) * per_page
+
+        query = from p in Product, where: p.active == true
+        query = apply_filters(query, filters)
+
+        products =
+          query
+          |> limit(^per_page)
+          |> offset(^offset)
+          |> Repo.all()
+
+        total_count = Repo.aggregate(query, :count)
+
+        {:ok, %{
+          entries: products,
+          page_number: page,
+          page_size: per_page,
+          total_entries: total_count,
+          total_pages: ceil(total_count / per_page)
+        }}
+      end
+
+  - name: Add Filtering and Sorting
+    agent: ecto-specialist
+    duration: 30min - 1hr
+    tasks:
+      - Support query parameters for filtering
+      - Allow sorting by multiple fields
+      - Validate filter and sort parameters
+      - Use dynamic queries for flexibility
+    pattern: |
+      def list_products(filters) do
+        Product
+        |> apply_filters(filters)
+        |> apply_sorting(filters["sort_by"], filters["sort_order"])
+        |> Repo.all()
+      end
+
+      defp apply_filters(query, filters) do
+        Enum.reduce(filters, query, fn
+          {"active", value}, query when value in ["true", "false"] ->
+            where(query, [p], p.active == ^(value == "true"))
+
+          {"category_id", value}, query ->
+            where(query, [p], p.category_id == ^value)
+
+          {"min_price", value}, query ->
+            where(query, [p], p.price >= ^value)
+
+          {"search", value}, query ->
+            search_term = "%#{value}%"
+            where(query, [p], ilike(p.name, ^search_term))
+
+          _, query ->
+            query
+        end)
+      end
+
+      defp apply_sorting(query, nil, _), do: order_by(query, [desc: :inserted_at])
+      defp apply_sorting(query, field, "asc"), do: order_by(query, [asc: ^field])
+      defp apply_sorting(query, field, _), do: order_by(query, [desc: ^field])
+
+  - name: Write API Tests
+    agent: elixir-qa
+    duration: 2-3hrs
+    test_categories:
+      index_tests:
+        - Test returns list of resources
+        - Test pagination works correctly
+        - Test filtering works
+        - Test empty result handling
+
+      show_tests:
+        - Test returns single resource
+        - Test 404 when not found
+
+      create_tests:
+        - Test creates with valid data (201 status)
+        - Test validation errors (422 status)
+        - Test unauthorized (401 status)
+
+      update_tests:
+        - Test updates with valid data
+        - Test validation errors
+        - Test 404 when resource not found
+
+      delete_tests:
+        - Test deletes resource (204 status)
+        - Test 404 when not found
+
+    pattern: |
+      defmodule MyAppWeb.API.ProductControllerTest do
+        use MyAppWeb.ConnCase
+
+        import MyApp.CatalogFixtures
+
+        @create_attrs %{name: "Widget", price: "9.99", sku: "WID-001"}
+        @update_attrs %{name: "Updated Widget", price: "12.99"}
+        @invalid_attrs %{name: nil, price: nil}
+
+        setup %{conn: conn} do
+          {:ok, conn: put_req_header(conn, "accept", "application/json")}
+        end
+
+        describe "index" do
+          test "lists all products", %{conn: conn} do
+            product = product_fixture()
+            conn = get(conn, ~p"/api/products")
+
+            assert json_response(conn, 200)["data"] == [
+              %{
+                "id" => product.id,
+                "type" => "product",
+                "attributes" => %{
+                  "name" => product.name,
+                  "price" => to_string(product.price),
+                  "sku" => product.sku
+                }
+              }
+            ]
+          end
+
+          test "supports pagination", %{conn: conn} do
+            # Create 25 products
+            for i <- 1..25, do: product_fixture(name: "Product #{i}")
+
+            conn = get(conn, ~p"/api/products?page=2&per_page=10")
+            response = json_response(conn, 200)
+
+            assert length(response["data"]) == 10
+            assert response["meta"]["page"] == 2
+            assert response["meta"]["total_pages"] == 3
+          end
+
+          test "supports filtering", %{conn: conn} do
+            active = product_fixture(active: true, name: "Active")
+            _inactive = product_fixture(active: false, name: "Inactive")
+
+            conn = get(conn, ~p"/api/products?filters[active]=true")
+            data = json_response(conn, 200)["data"]
+
+            assert length(data) == 1
+            assert hd(data)["attributes"]["name"] == "Active"
+          end
+        end
+
+        describe "show" do
+          test "renders product when found", %{conn: conn} do
+            product = product_fixture()
+            conn = get(conn, ~p"/api/products/#{product.id}")
+
+            assert %{
+              "id" => ^product.id,
+              "type" => "product"
+            } = json_response(conn, 200)["data"]
+          end
+
+          test "renders 404 when not found", %{conn: conn} do
+            conn = get(conn, ~p"/api/products/999")
+            assert json_response(conn, 404)
+          end
+        end
+
+        describe "create" do
+          test "creates product with valid data", %{conn: conn} do
+            conn = post(conn, ~p"/api/products", product: @create_attrs)
+
+            assert %{"id" => id} = json_response(conn, 201)["data"]
+
+            conn = get(conn, ~p"/api/products/#{id}")
+            assert %{
+              "id" => ^id,
+              "attributes" => %{
+                "name" => "Widget",
+                "price" => "9.99",
+                "sku" => "WID-001"
+              }
+            } = json_response(conn, 200)["data"]
+          end
+
+          test "renders errors with invalid data", %{conn: conn} do
+            conn = post(conn, ~p"/api/products", product: @invalid_attrs)
+
+            assert json_response(conn, 422)["errors"] != %{}
+          end
+        end
+
+        describe "update" do
+          test "updates product with valid data", %{conn: conn} do
+            product = product_fixture()
+            conn = put(conn, ~p"/api/products/#{product.id}", product: @update_attrs)
+
+            assert %{"id" => id} = json_response(conn, 200)["data"]
+
+            conn = get(conn, ~p"/api/products/#{id}")
+            assert %{
+              "attributes" => %{
+                "name" => "Updated Widget",
+                "price" => "12.99"
+              }
+            } = json_response(conn, 200)["data"]
+          end
+        end
+
+        describe "delete" do
+          test "deletes chosen product", %{conn: conn} do
+            product = product_fixture()
+            conn = delete(conn, ~p"/api/products/#{product.id}")
+
+            assert response(conn, 204)
+
+            conn = get(conn, ~p"/api/products/#{product.id}")
+            assert json_response(conn, 404)
+          end
+        end
+      end
+
+  - name: Add API Documentation
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Document all endpoints
+      - Include request/response examples
+      - Document authentication requirements
+      - Add error response examples
+    tools:
+      - OpenAPI/Swagger specification
+      - Phoenix Swagger library
+      - README documentation
+
+  - name: Quality Validation
+    agent: elixir-qa
+    duration: 30min - 1hr
+    checks:
+      - All API tests passing
+      - Proper HTTP status codes returned
+      - Error responses are consistent
+      - Authentication working correctly
+      - Pagination tested
+      - Performance acceptable with large datasets
+    success_criteria:
+      - All tests green
+      - No N+1 queries
+      - Response times < 200ms
+      - Proper error handling
+
+checklist:
+  design:
+    - [ ] API endpoints planned (resources, methods)
+    - [ ] JSON response structure defined
+    - [ ] Authentication strategy decided
+    - [ ] Pagination/filtering requirements clear
+
+  implementation:
+    - [ ] JSON view implemented with proper structure
+    - [ ] Controller actions follow RESTful conventions
+    - [ ] Fallback controller handles errors
+    - [ ] Routes added in /api scope with :api pipeline
+    - [ ] Request validation in changesets
+    - [ ] Proper HTTP status codes (200, 201, 204, 404, 422, etc.)
+
+  features:
+    - [ ] Pagination implemented (if needed)
+    - [ ] Filtering works correctly (if needed)
+    - [ ] Sorting implemented (if needed)
+    - [ ] Authentication working (if needed)
+    - [ ] Authorization checks in place
+
+  testing:
+    - [ ] All CRUD operations tested
+    - [ ] Pagination tested
+    - [ ] Filtering tested
+    - [ ] Error cases covered
+    - [ ] Authentication tested (if applicable)
+
+  documentation:
+    - [ ] API endpoints documented
+    - [ ] Request/response examples provided
+    - [ ] Authentication requirements clear
+    - [ ] Error responses documented
+
+http_status_codes:
+  success:
+    - "200 OK - Successful GET, PUT/PATCH"
+    - "201 Created - Successful POST"
+    - "204 No Content - Successful DELETE"
+
+  client_errors:
+    - "400 Bad Request - Invalid request format"
+    - "401 Unauthorized - Missing/invalid authentication"
+    - "403 Forbidden - Valid auth but insufficient permissions"
+    - "404 Not Found - Resource doesn't exist"
+    - "422 Unprocessable Entity - Validation failed"
+
+  server_errors:
+    - "500 Internal Server Error - Unexpected error"
+    - "503 Service Unavailable - Temporary unavailability"
+
+best_practices:
+  - "Use proper HTTP status codes"
+  - "Return consistent error format"
+  - "Validate all inputs in changesets"
+  - "Limit pagination page size (max 100)"
+  - "Use fallback controller for error handling"
+  - "Version your API (/api/v1/)"
+  - "Document all endpoints"
+  - "Test thoroughly including error cases"
+
+estimated_time: 4-8 hours (depending on complexity and features)

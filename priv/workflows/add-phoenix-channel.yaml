@@ -1,0 +1,656 @@
+# BMAD Workflow: Add Phoenix Channel
+# Use this workflow when adding WebSocket real-time communication to Phoenix
+
+name: Add Phoenix Channel
+description: Complete workflow for implementing real-time features with Phoenix Channels
+type: feature
+framework: phoenix_channels
+complexity: medium-high
+agents_involved:
+  - phoenix-expert
+  - elixir-dev
+  - elixir-qa
+
+prerequisites:
+  - Phoenix installed with Channel support
+  - Understanding of WebSocket protocol
+  - Client-side JavaScript familiarity
+  - Real-time requirements defined
+
+steps:
+  - name: Plan Channel Architecture
+    agent: phoenix-expert
+    duration: 30min - 1hr
+    questions:
+      - What real-time features are needed?
+      - What topics/rooms will users join?
+      - What events will be broadcast?
+      - Do we need presence tracking?
+      - What's the authentication strategy?
+      - How many concurrent connections expected?
+    deliverable: Channel architecture diagram
+
+  - name: Generate Channel
+    agent: elixir-dev
+    duration: 15min
+    command: |
+      mix phx.gen.channel Room
+
+    generates: |
+      - lib/my_app_web/channels/room_channel.ex
+      - test/my_app_web/channels/room_channel_test.exs
+      - Updates lib/my_app_web/channels/user_socket.ex
+
+  - name: Configure Socket
+    agent: phoenix-expert
+    duration: 15-30min
+    tasks:
+      - Configure user_socket.ex with channels
+      - Add authentication if needed
+      - Set up socket assigns
+    pattern: |
+      defmodule MyAppWeb.UserSocket do
+        use Phoenix.Socket
+
+        # Channels
+        channel "room:*", MyAppWeb.RoomChannel
+        channel "chat:*", MyAppWeb.ChatChannel
+        channel "user:*", MyAppWeb.UserChannel
+
+        @impl true
+        def connect(%{"token" => token}, socket, _connect_info) do
+          # Authenticate user
+          case Phoenix.Token.verify(socket, "user socket", token, max_age: 86400) do
+            {:ok, user_id} ->
+              socket = assign(socket, :current_user_id, user_id)
+              {:ok, socket}
+
+            {:error, _reason} ->
+              :error
+          end
+        end
+
+        def connect(_params, _socket, _connect_info), do: :error
+
+        @impl true
+        def id(socket), do: "user_socket:#{socket.assigns.current_user_id}"
+      end
+
+      # In endpoint.ex
+      socket "/socket", MyAppWeb.UserSocket,
+        websocket: true,
+        longpoll: false
+
+  - name: Implement Channel
+    agent: phoenix-expert
+    duration: 1-3hrs
+    tasks:
+      - Implement join/3 for authorization
+      - Add handle_in for incoming messages
+      - Implement handle_out for outgoing broadcasts
+      - Add presence tracking if needed
+    pattern: |
+      defmodule MyAppWeb.RoomChannel do
+        use MyAppWeb, :channel
+
+        alias MyApp.Chat
+        alias MyAppWeb.Presence
+
+        @impl true
+        def join("room:" <> room_id, _params, socket) do
+          # Authorization check
+          user_id = socket.assigns.current_user_id
+
+          if authorized?(user_id, room_id) do
+            send(self(), :after_join)
+            {:ok, assign(socket, :room_id, room_id)}
+          else
+            {:error, %{reason: "unauthorized"}}
+          end
+        end
+
+        @impl true
+        def handle_info(:after_join, socket) do
+          # Load recent messages
+          room_id = socket.assigns.room_id
+          messages = Chat.recent_messages(room_id, 50)
+
+          push(socket, "messages:loaded", %{messages: messages})
+
+          # Track presence
+          {:ok, _} = Presence.track(socket, socket.assigns.current_user_id, %{
+            online_at: inspect(System.system_time(:second))
+          })
+
+          push(socket, "presence_state", Presence.list(socket))
+          {:noreply, socket}
+        end
+
+        @impl true
+        def handle_in("message:new", %{"text" => text}, socket) do
+          room_id = socket.assigns.room_id
+          user_id = socket.assigns.current_user_id
+
+          case Chat.create_message(room_id, user_id, text) do
+            {:ok, message} ->
+              # Broadcast to all users in room
+              broadcast!(socket, "message:new", %{
+                id: message.id,
+                text: message.text,
+                user_id: message.user_id,
+                inserted_at: message.inserted_at
+              })
+
+              {:reply, :ok, socket}
+
+            {:error, changeset} ->
+              {:reply, {:error, %{errors: translate_errors(changeset)}}, socket}
+          end
+        end
+
+        @impl true
+        def handle_in("typing:start", _params, socket) do
+          broadcast_from!(socket, "typing:start", %{
+            user_id: socket.assigns.current_user_id
+          })
+
+          {:noreply, socket}
+        end
+
+        @impl true
+        def handle_in("typing:stop", _params, socket) do
+          broadcast_from!(socket, "typing:stop", %{
+            user_id: socket.assigns.current_user_id
+          })
+
+          {:noreply, socket}
+        end
+
+        # Helper functions
+
+        defp authorized?(user_id, room_id) do
+          Chat.user_can_access_room?(user_id, room_id)
+        end
+
+        defp translate_errors(changeset) do
+          Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+            Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+              opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+            end)
+          end)
+        end
+      end
+
+  - name: Add Presence Tracking (if needed)
+    agent: phoenix-expert
+    duration: 30min - 1hr
+    tasks:
+      - Create Presence module
+      - Track user presence in channel
+      - Handle presence diff events
+    pattern: |
+      # Create presence module
+      defmodule MyAppWeb.Presence do
+        use Phoenix.Presence,
+          otp_app: :my_app,
+          pubsub_server: MyApp.PubSub
+      end
+
+      # Add to supervision tree in application.ex
+      children = [
+        MyApp.Repo,
+        MyAppWeb.Presence
+      ]
+
+      # In channel
+      def handle_info(:after_join, socket) do
+        {:ok, _} = Presence.track(socket, socket.assigns.current_user_id, %{
+          online_at: inspect(System.system_time(:second)),
+          username: socket.assigns.username
+        })
+
+        push(socket, "presence_state", Presence.list(socket))
+        {:noreply, socket}
+      end
+
+  - name: Implement Client-Side JavaScript
+    agent: elixir-dev
+    duration: 1-2hrs
+    tasks:
+      - Set up Phoenix Socket connection
+      - Join channel with authentication
+      - Handle incoming events
+      - Send outgoing events
+      - Handle connection errors
+    pattern: |
+      // In assets/js/user_socket.js
+      import {Socket} from "phoenix"
+
+      let socket = new Socket("/socket", {
+        params: {token: window.userToken},
+        logger: (kind, msg, data) => { console.log(`${kind}: ${msg}`, data) }
+      })
+
+      socket.connect()
+
+      // Join channel
+      let channel = socket.channel("room:lobby", {})
+
+      channel.on("messages:loaded", payload => {
+        console.log("Messages loaded:", payload.messages)
+        renderMessages(payload.messages)
+      })
+
+      channel.on("message:new", payload => {
+        console.log("New message:", payload)
+        appendMessage(payload)
+      })
+
+      channel.on("typing:start", payload => {
+        console.log("User typing:", payload.user_id)
+        showTypingIndicator(payload.user_id)
+      })
+
+      channel.on("typing:stop", payload => {
+        hideTypingIndicator(payload.user_id)
+      })
+
+      channel.on("presence_state", state => {
+        console.log("Initial presence:", state)
+        renderPresence(state)
+      })
+
+      channel.on("presence_diff", diff => {
+        console.log("Presence diff:", diff)
+        updatePresence(diff)
+      })
+
+      channel.join()
+        .receive("ok", resp => { console.log("Joined successfully", resp) })
+        .receive("error", resp => { console.log("Unable to join", resp) })
+
+      // Send message
+      document.querySelector("#send-button").addEventListener("click", e => {
+        let input = document.querySelector("#message-input")
+        let text = input.value
+
+        channel.push("message:new", {text: text})
+          .receive("ok", () => {
+            input.value = ""
+          })
+          .receive("error", resp => {
+            console.error("Error sending message:", resp)
+          })
+      })
+
+      // Typing indicator
+      let typingTimer
+      document.querySelector("#message-input").addEventListener("keyup", e => {
+        clearTimeout(typingTimer)
+
+        channel.push("typing:start", {})
+
+        typingTimer = setTimeout(() => {
+          channel.push("typing:stop", {})
+        }, 1000)
+      })
+
+  - name: Handle Broadcasts from Context
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Broadcast events after mutations
+      - Send targeted messages to specific users
+      - Update all connected clients
+    pattern: |
+      # In Chat context
+      def create_message(room_id, user_id, text) do
+        %Message{}
+        |> Message.changeset(%{
+          room_id: room_id,
+          user_id: user_id,
+          text: text
+        })
+        |> Repo.insert()
+        |> broadcast_message(:message_created, room_id)
+      end
+
+      defp broadcast_message({:ok, message}, event, room_id) do
+        MyAppWeb.Endpoint.broadcast!(
+          "room:#{room_id}",
+          Atom.to_string(event),
+          %{
+            id: message.id,
+            text: message.text,
+            user_id: message.user_id,
+            inserted_at: message.inserted_at
+          }
+        )
+
+        {:ok, message}
+      end
+
+      defp broadcast_message(error, _event, _room_id), do: error
+
+      # Send to specific user
+      def notify_user(user_id, notification) do
+        MyAppWeb.Endpoint.broadcast!(
+          "user:#{user_id}",
+          "notification:new",
+          notification
+        )
+      end
+
+  - name: Add Rate Limiting
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Prevent message flooding
+      - Limit connection attempts
+      - Track user activity
+    pattern: |
+      defmodule MyAppWeb.RoomChannel do
+        use MyAppWeb, :channel
+
+        # Track last message time
+        @impl true
+        def handle_in("message:new", %{"text" => text}, socket) do
+          now = System.system_time(:second)
+          last_message = socket.assigns[:last_message_at] || 0
+
+          if now - last_message < 1 do
+            # Rate limit: max 1 message per second
+            {:reply, {:error, %{reason: "rate_limited"}}, socket}
+          else
+            # Process message
+            case create_message(text, socket) do
+              {:ok, message} ->
+                broadcast!(socket, "message:new", message)
+                {:reply, :ok, assign(socket, :last_message_at, now)}
+
+              {:error, changeset} ->
+                {:reply, {:error, %{errors: translate_errors(changeset)}}, socket}
+            end
+          end
+        end
+      end
+
+  - name: Implement Reconnection Logic
+    agent: elixir-dev
+    duration: 30min
+    tasks:
+      - Handle client disconnections
+      - Implement exponential backoff
+      - Restore state after reconnection
+    pattern: |
+      // In client JavaScript
+      let socket = new Socket("/socket", {
+        params: {token: window.userToken},
+        reconnectAfterMs: function(tries) {
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s (max)
+          return Math.min(1000 * Math.pow(2, tries), 16000)
+        }
+      })
+
+      channel.on("error", () => {
+        console.error("Channel error")
+      })
+
+      channel.on("close", () => {
+        console.log("Channel closed")
+      })
+
+      // Rejoin on reconnection
+      socket.onError(() => {
+        console.error("Socket error")
+      })
+
+      socket.onClose(() => {
+        console.log("Socket closed")
+      })
+
+  - name: Write Channel Tests
+    agent: elixir-qa
+    duration: 2-3hrs
+    test_categories:
+      join_tests:
+        - Test successful join with authorization
+        - Test join rejection for unauthorized users
+        - Test room parameter validation
+
+      message_tests:
+        - Test sending and receiving messages
+        - Test message validation
+        - Test broadcasting to other users
+        - Test rate limiting
+
+      presence_tests:
+        - Test user tracking on join
+        - Test presence updates
+        - Test user leaving
+
+    pattern: |
+      defmodule MyAppWeb.RoomChannelTest do
+        use MyAppWeb.ChannelCase
+
+        setup do
+          user = user_fixture()
+          room = room_fixture()
+
+          {:ok, _, socket} =
+            MyAppWeb.UserSocket
+            |> socket("user_id", %{current_user_id: user.id})
+            |> subscribe_and_join(MyAppWeb.RoomChannel, "room:#{room.id}")
+
+          %{socket: socket, user: user, room: room}
+        end
+
+        describe "join/3" do
+          test "joins room successfully", %{user: user, room: room} do
+            {:ok, _, socket} =
+              MyAppWeb.UserSocket
+              |> socket("user_id", %{current_user_id: user.id})
+              |> subscribe_and_join(MyAppWeb.RoomChannel, "room:#{room.id}")
+
+            assert socket.topic == "room:#{room.id}"
+          end
+
+          test "rejects unauthorized user", %{room: room} do
+            other_user = user_fixture()
+
+            assert {:error, %{reason: "unauthorized"}} =
+              MyAppWeb.UserSocket
+              |> socket("user_id", %{current_user_id: other_user.id})
+              |> subscribe_and_join(MyAppWeb.RoomChannel, "room:#{room.id}")
+          end
+        end
+
+        describe "message:new" do
+          test "broadcasts new message to all users", %{socket: socket} do
+            push(socket, "message:new", %{"text" => "Hello!"})
+
+            assert_broadcast "message:new", %{text: "Hello!"}
+          end
+
+          test "returns error for invalid message", %{socket: socket} do
+            ref = push(socket, "message:new", %{"text" => ""})
+
+            assert_reply ref, :error, %{errors: %{text: _}}
+          end
+
+          test "enforces rate limiting", %{socket: socket} do
+            # Send first message
+            ref1 = push(socket, "message:new", %{"text" => "Message 1"})
+            assert_reply ref1, :ok
+
+            # Try to send second message immediately
+            ref2 = push(socket, "message:new", %{"text" => "Message 2"})
+            assert_reply ref2, :error, %{reason: "rate_limited"}
+          end
+        end
+
+        describe "typing events" do
+          test "broadcasts typing:start to other users", %{socket: socket, user: user} do
+            push(socket, "typing:start", %{})
+
+            assert_broadcast "typing:start", %{user_id: ^user.id}
+          end
+
+          test "broadcasts typing:stop to other users", %{socket: socket, user: user} do
+            push(socket, "typing:stop", %{})
+
+            assert_broadcast "typing:stop", %{user_id: ^user.id}
+          end
+        end
+
+        describe "presence" do
+          test "tracks user on join", %{socket: socket, user: user} do
+            # Presence is tracked in :after_join
+            assert_push "presence_state", state
+
+            assert Map.has_key?(state, to_string(user.id))
+          end
+
+          test "broadcasts presence diff when user leaves" do
+            user2 = user_fixture()
+            room = room_fixture()
+
+            {:ok, _, socket2} =
+              MyAppWeb.UserSocket
+              |> socket("user_id", %{current_user_id: user2.id})
+              |> subscribe_and_join(MyAppWeb.RoomChannel, "room:#{room.id}")
+
+            # Leave channel
+            Process.unlink(socket2.channel_pid)
+            GenServer.stop(socket2.channel_pid)
+
+            assert_broadcast "presence_diff", %{leaves: leaves}
+            assert Map.has_key?(leaves, to_string(user2.id))
+          end
+        end
+      end
+
+  - name: Add Monitoring
+    agent: elixir-dev
+    duration: 30min
+    tasks:
+      - Track connected users count
+      - Monitor message throughput
+      - Set up alerts for errors
+    pattern: |
+      # Add Telemetry events
+      defmodule MyAppWeb.RoomChannel do
+        def join("room:" <> room_id, _params, socket) do
+          :telemetry.execute(
+            [:my_app, :channel, :join],
+            %{count: 1},
+            %{room_id: room_id}
+          )
+
+          # ... rest of join logic
+        end
+
+        def handle_in("message:new", params, socket) do
+          start_time = System.monotonic_time()
+
+          result = process_message(params, socket)
+
+          duration = System.monotonic_time() - start_time
+
+          :telemetry.execute(
+            [:my_app, :channel, :message],
+            %{duration: duration},
+            %{room_id: socket.assigns.room_id}
+          )
+
+          result
+        end
+      end
+
+  - name: Quality Validation
+    agent: elixir-qa
+    duration: 30min - 1hr
+    checks:
+      - Channel joins work correctly
+      - Messages broadcast successfully
+      - Presence tracking accurate
+      - Rate limiting effective
+      - Reconnection works smoothly
+      - Performance acceptable under load
+    success_criteria:
+      - All tests passing
+      - Can handle 1000+ concurrent connections
+      - Message latency < 100ms
+      - No memory leaks
+
+checklist:
+  design:
+    - [ ] Channel architecture planned
+    - [ ] Topics/rooms defined
+    - [ ] Events documented
+    - [ ] Authentication strategy decided
+
+  implementation:
+    - [ ] Channel generated and configured
+    - [ ] Socket authentication working
+    - [ ] join/3 with authorization
+    - [ ] handle_in for all events
+    - [ ] Broadcasting implemented
+    - [ ] Presence tracking (if needed)
+    - [ ] Client JavaScript working
+
+  features:
+    - [ ] Real-time messaging working
+    - [ ] Typing indicators (if needed)
+    - [ ] Presence tracking (if needed)
+    - [ ] Rate limiting in place
+    - [ ] Reconnection logic working
+
+  testing:
+    - [ ] Join tests passing
+    - [ ] Message tests comprehensive
+    - [ ] Presence tests working
+    - [ ] Rate limiting tested
+    - [ ] Load tested
+
+  production:
+    - [ ] Monitoring in place
+    - [ ] Connection limits set
+    - [ ] Error handling robust
+    - [ ] Documentation complete
+
+best_practices:
+  - "Always authorize in join/3"
+  - "Use broadcast! for messages to all users"
+  - "Use broadcast_from! to exclude sender"
+  - "Implement rate limiting to prevent abuse"
+  - "Handle reconnections gracefully"
+  - "Track presence for online/offline status"
+  - "Monitor connection counts and message throughput"
+  - "Test with realistic load"
+
+common_use_cases:
+  chat_application:
+    - "Real-time messaging"
+    - "Typing indicators"
+    - "Online presence"
+    - "Message history"
+
+  collaborative_editing:
+    - "Document updates"
+    - "Cursor positions"
+    - "User presence"
+    - "Conflict resolution"
+
+  notifications:
+    - "User-specific notifications"
+    - "System broadcasts"
+    - "Toast messages"
+
+  live_updates:
+    - "Dashboard metrics"
+    - "Order status"
+    - "Stock prices"
+    - "Sports scores"
+
+estimated_time: 4-8 hours (depending on complexity and features)
