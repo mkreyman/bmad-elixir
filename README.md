@@ -84,21 +84,29 @@ your_phoenix_app/
 
 ### Create a New Story
 
-```bash
-mix bmad.story new "Add user authentication"
-```
-
-### List Available Agents
+Copy and customize the story template:
 
 ```bash
-mix bmad.agent list
+cp .bmad/templates/story-template.yaml stories/STORY-001.yaml
 ```
 
-### Run a Workflow
+Then edit `stories/STORY-001.yaml` with your story details.
 
-```bash
-mix bmad.workflow run greenfield-phoenix
-```
+### Use an Agent
+
+Agents are markdown files that can be loaded into AI coding tools like Claude Code or GitHub Copilot. Each agent in `.bmad/agents/` contains:
+
+- Role definition and responsibilities
+- Commands and best practices
+- Examples and patterns specific to that role
+
+### Follow a Workflow
+
+Workflows provide step-by-step guides for complex tasks. See `.bmad/workflows/` for available workflows:
+
+- `greenfield-phoenix.yaml` - New Phoenix project setup
+- `add-phoenix-context.yaml` - Create new bounded context
+- `add-liveview-feature.yaml` - Implement LiveView feature
 
 ## Git Hooks
 
@@ -142,33 +150,154 @@ quality:
 
 ## Example Workflow
 
-1. **Create a story**: `mix bmad.story new "Add OAuth login"`
-2. **Activate agent**: Load `elixir-dev` agent in your IDE
-3. **Implement**: Follow the story tasks and established patterns
-4. **Test**: Write comprehensive ExUnit tests
-5. **Quality check**: Pre-commit hook validates everything
-6. **Complete**: `mix bmad.story complete`
+1. **Create a story**: Copy template and fill in details
+   ```bash
+   cp .bmad/templates/story-template.yaml stories/STORY-042-oauth-login.yaml
+   ```
+
+2. **Review workflow**: Check `.bmad/workflows/` for relevant workflow guide
+
+3. **Activate agent**: Load appropriate agent from `.bmad/agents/` (e.g., `elixir-dev.md`)
+
+4. **Implement**: Follow story tasks, workflow steps, and established patterns
+
+5. **Use task guides**: Reference `.bmad/tasks/` for detailed implementation help
+
+6. **Test**: Write comprehensive ExUnit tests following TDD principles
+
+7. **Quality check**: Pre-commit hook validates everything automatically
+
+8. **Review checklists**: Verify against relevant checklists in `.bmad/checklists/`
+
+9. **Complete**: Move story to completed folder when all criteria met
+
+## What's Included
+
+### 🤖 Four Core Agents
+
+Located in `.bmad/agents/`:
+
+1. **elixir-dev.md** - Senior Elixir/Phoenix Engineer
+   - Feature implementation with TDD
+   - Bug fixes and refactoring
+   - Follows established patterns religiously
+
+2. **elixir-qa.md** - Quality Assurance Specialist
+   - Comprehensive test coverage
+   - Quality gate validation (tests, credo, dialyzer)
+   - Edge case discovery
+
+3. **elixir-architect.md** - System Design Architect
+   - OTP supervision trees
+   - GenServer patterns
+   - Phoenix context boundaries
+   - Fault tolerance design
+
+4. **elixir-sm.md** - Scrum Master
+   - User story creation
+   - Task breakdown
+   - Agent coordination
+   - Sprint planning
+
+### 📋 Three Production Workflows
+
+Located in `.bmad/workflows/`:
+
+1. **greenfield-phoenix.yaml** - Complete new Phoenix project setup
+   - Planning & Architecture (4-8 hours)
+   - Project setup and configuration
+   - Core infrastructure (auth, contexts, deployment)
+   - Quality gates and best practices
+
+2. **add-phoenix-context.yaml** - Systematic context creation (4-8 hours)
+   - Context boundary definition
+   - Schema and migration design
+   - Context API implementation
+   - Comprehensive testing
+
+3. **add-liveview-feature.yaml** - LiveView implementation (4-8 hours)
+   - LiveView structure planning
+   - Mount, events, and PubSub handlers
+   - Streams and forms (following AGENTS.md rules)
+   - Performance optimization
+
+### ✅ Three Quality Checklists
+
+Located in `.bmad/checklists/`:
+
+1. **phoenix-checklist.md** - Phoenix best practices
+   - Context design and controllers
+   - Security and performance
+   - Error handling and testing
+   - Deployment readiness
+
+2. **ecto-checklist.md** - Database best practices
+   - Schema design and associations
+   - Migrations and indices
+   - Query optimization
+   - Multi-tenancy patterns
+
+3. **liveview-checklist.md** - LiveView best practices
+   - Lifecycle implementation
+   - Streams and socket assigns
+   - Forms and events
+   - PubSub and real-time updates
+   - Common pitfalls to avoid
+
+### 📖 Six Task Guides
+
+Located in `.bmad/tasks/`:
+
+1. **create-story.md** - User story creation with acceptance criteria
+2. **qa-gate.md** - Quality validation (tests, credo, dialyzer, format)
+3. **write-tests.md** - Comprehensive testing strategies
+4. **create-context.md** - Phoenix context with Ecto patterns
+5. **create-liveview.md** - LiveView following best practices
+6. **debugging.md** - Debug workflows and tools (IEx, Observer, Recon)
+
+### 🔧 Five Git Hooks
+
+Located in `priv/hooks/`:
+
+1. **pre-commit.sh** - Quality checks and auto-restage
+2. **commit-msg.sh** - Block AI attributions
+3. **prepare-commit-msg.sh** - Show guidelines in editor
+4. **post-checkout.sh** - Migration reminders
+5. **post-merge.sh** - Dependency/migration alerts
+
+### 📄 Two YAML Templates
+
+Located in `.bmad/templates/`:
+
+1. **story-template.yaml** - Comprehensive user story structure
+2. **config-template.yaml** - BMAD configuration with all options
 
 ## Features
 
 ### 📋 Story-Driven Development
 
-Stories provide structure and context:
+Stories provide structure and context using the YAML template:
 
-```markdown
-# STORY-001: Add User Authentication
+```yaml
+story:
+  id: STORY-001
+  title: "Add User Authentication"
+  status: in_progress
+  assigned_agent: elixir-dev
 
-## Tasks
-- [x] Create User schema
-- [x] Implement Auth context
-- [x] Add password hashing
-- [ ] Create session management
-- [ ] Write comprehensive tests
+acceptance_criteria:
+  - scenario: "User can register"
+    given: "I am on the registration page"
+    when: "I submit valid credentials"
+    then:
+      - "My account is created"
+      - "I am logged in automatically"
 
-## Implementation Notes
-- Following existing pattern in Accounts context
-- Using bcrypt for password hashing
-- Tests: 15/15 passing
+technical_tasks:
+  context:
+    - "Create User schema with password hashing"
+    - "Implement Accounts.create_user/1"
+    - "Write comprehensive tests"
 ```
 
 ### 🎯 Quality Gates
