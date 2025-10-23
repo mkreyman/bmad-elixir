@@ -1,0 +1,349 @@
+# BMAD Workflow: Add LiveView Feature
+# Use this workflow when adding an interactive, real-time feature with LiveView
+
+name: Add LiveView Feature
+description: Complete workflow for implementing a LiveView-powered interactive feature
+type: feature
+framework: phoenix_liveview
+complexity: medium-high
+agents_involved:
+  - elixir-dev
+  - elixir-qa
+
+prerequisites:
+  - Phoenix LiveView installed and configured
+  - Context and schemas already exist for data being displayed
+  - Understanding of LiveView lifecycle (mount, handle_event, handle_info)
+
+steps:
+  - name: Plan LiveView Structure
+    agent: elixir-dev
+    duration: 30min - 1hr
+    questions:
+      - What state needs to be tracked in socket assigns?
+      - What user interactions trigger events?
+      - Will this need PubSub for real-time updates?
+      - What data needs to be preloaded vs lazy-loaded?
+      - Will forms be used? (use to_form/1)
+    deliverable: LiveView structure outline
+
+  - name: Generate LiveView
+    agent: elixir-dev
+    duration: 15-30min
+    commands:
+      - "mix phx.gen.live ContextName SchemaName table_name field:type ..."
+      - Example: "mix phx.gen.live Catalog Product products name:string price:decimal"
+    notes: |
+      This generates:
+      - lib/my_app_web/live/product_live/index.ex
+      - lib/my_app_web/live/product_live/show.ex
+      - lib/my_app_web/live/product_live/form_component.ex
+      - test/my_app_web/live/product_live_test.exs
+      - Adds routes to router.ex
+
+  - name: Implement Mount
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Load initial data
+      - Set up socket assigns
+      - Subscribe to PubSub topics if needed
+      - Handle connected vs disconnected state
+    patterns:
+      basic_mount: |
+        def mount(_params, _session, socket) do
+          {:ok, assign(socket, :products, list_products())}
+        end
+
+      with_pubsub: |
+        def mount(_params, _session, socket) do
+          if connected?(socket) do
+            Phoenix.PubSub.subscribe(MyApp.PubSub, "products")
+          end
+
+          {:ok, assign(socket, :products, list_products())}
+        end
+
+      with_streams: |
+        def mount(_params, _session, socket) do
+          {:ok,
+           socket
+           |> stream(:products, Catalog.list_products())
+           |> assign(:products_empty?, false)}
+        end
+
+  - name: Implement Event Handlers
+    agent: elixir-dev
+    duration: 1-2hrs
+    event_types:
+      button_clicks:
+        - Delete button
+        - Save button
+        - Custom actions
+      form_submissions:
+        - Create new item
+        - Update existing item
+        - Multi-step forms
+      form_changes:
+        - Live validation
+        - Dependent field updates
+        - Search/filter inputs
+    patterns:
+      simple_event: |
+        def handle_event("delete", %{"id" => id}, socket) do
+          product = Catalog.get_product!(id)
+          {:ok, _} = Catalog.delete_product(product)
+
+          {:noreply, stream_delete(socket, :products, product)}
+        end
+
+      form_validation: |
+        def handle_event("validate", %{"product" => params}, socket) do
+          changeset =
+            socket.assigns.product
+            |> Catalog.change_product(params)
+            |> Map.put(:action, :validate)
+
+          {:noreply, assign(socket, :form, to_form(changeset))}
+        end
+
+      form_submission: |
+        def handle_event("save", %{"product" => params}, socket) do
+          case Catalog.create_product(params) do
+            {:ok, product} ->
+              {:noreply,
+               socket
+               |> put_flash(:info, "Product created")
+               |> stream_insert(:products, product, at: 0)}
+
+            {:error, %Ecto.Changeset{} = changeset} ->
+              {:noreply, assign(socket, :form, to_form(changeset))}
+          end
+        end
+
+  - name: Implement PubSub Handlers (if needed)
+    agent: elixir-dev
+    duration: 30min - 1hr
+    tasks:
+      - Handle product_created messages
+      - Handle product_updated messages
+      - Handle product_deleted messages
+      - Update UI optimistically
+    pattern: |
+      def handle_info({:product_created, product}, socket) do
+        {:noreply, stream_insert(socket, :products, product, at: 0)}
+      end
+
+      def handle_info({:product_updated, product}, socket) do
+        {:noreply, stream_insert(socket, :products, product)}
+      end
+
+      def handle_info({:product_deleted, product}, socket) do
+        {:noreply, stream_delete(socket, :products, product)}
+      end
+
+  - name: Build Template
+    agent: elixir-dev
+    duration: 1-3hrs
+    tasks:
+      - Create main template structure
+      - Add forms with to_form/1
+      - Implement conditional rendering
+      - Add loading states
+      - Handle empty states
+      - Add error displays
+    patterns:
+      streams_with_empty: |
+        <div id="products" phx-update="stream">
+          <div class="hidden only:block">
+            No products yet. Click "New Product" to add one.
+          </div>
+          <div :for={{id, product} <- @streams.products} id={id}>
+            {product.name} - ${product.price}
+            <button phx-click="delete" phx-value-id={product.id}>
+              Delete
+            </button>
+          </div>
+        </div>
+
+      form_with_validation: |
+        <.form
+          for={@form}
+          id="product-form"
+          phx-change="validate"
+          phx-submit="save"
+        >
+          <.input field={@form[:name]} label="Name" />
+          <.input field={@form[:price]} label="Price" type="number" step="0.01" />
+          <.button>Save</.button>
+        </.form>
+
+  - name: Add LiveView Tests
+    agent: elixir-dev
+    duration: 2-3hrs
+    test_categories:
+      mount_tests:
+        - Test initial render
+        - Test loaded data
+        - Test empty state
+      event_tests:
+        - Test form submission
+        - Test validation
+        - Test button clicks
+        - Test delete actions
+      integration_tests:
+        - Test full create flow
+        - Test full update flow
+        - Test error handling
+    patterns:
+      mount_test: |
+        test "displays products", %{conn: conn} do
+          product = product_fixture()
+          {:ok, _lv, html} = live(conn, ~p"/products")
+
+          assert html =~ "Products"
+          assert html =~ product.name
+        end
+
+      event_test: |
+        test "deletes product", %{conn: conn} do
+          product = product_fixture()
+          {:ok, lv, _html} = live(conn, ~p"/products")
+
+          assert lv
+                 |> element("#products-#{product.id} button", "Delete")
+                 |> render_click()
+
+          refute has_element?(lv, "#products-#{product.id}")
+        end
+
+      form_test: |
+        test "saves new product", %{conn: conn} do
+          {:ok, lv, _html} = live(conn, ~p"/products/new")
+
+          assert lv
+                 |> form("#product-form", product: %{name: "Test", price: "9.99"})
+                 |> render_submit()
+
+          assert_patch(lv, ~p"/products")
+          html = render(lv)
+          assert html =~ "Test"
+        end
+
+  - name: Optimize Performance
+    agent: elixir-dev
+    duration: 30min - 1hr
+    optimizations:
+      - Use streams for large collections (not assigns)
+      - Implement pagination for huge datasets
+      - Add debouncing for search inputs
+      - Minimize socket assigns
+      - Use temporary assigns for one-time data
+      - Implement optimistic UI updates
+    patterns:
+      temporary_assigns: |
+        def mount(_params, _session, socket) do
+          {:ok,
+           socket
+           |> assign(:page_title, "Products")
+           |> stream(:products, list_products())
+           |> assign_once_on_mount()}
+        end
+
+        defp assign_once_on_mount(socket) do
+          socket
+          |> assign(:filter_options, get_filter_options())
+          |> assign(:sort_options, ["name", "price", "created_at"])
+        end
+
+      debounced_search: |
+        <.input
+          field={@form[:search]}
+          type="search"
+          phx-debounce="300"
+          placeholder="Search products..."
+        />
+
+  - name: Quality Validation
+    agent: elixir-qa
+    duration: 1-2hrs
+    checks:
+      - All LiveView tests passing
+      - Test all event handlers
+      - Test form validations
+      - Test error cases
+      - Test concurrent users (if applicable)
+      - Test browser back/forward navigation
+      - Test real-time updates work
+    success_criteria:
+      - No race conditions
+      - UI updates correctly
+      - Forms validate properly
+      - Error messages clear
+      - Loading states shown
+
+checklist:
+  planning:
+    - [ ] Socket assigns identified
+    - [ ] Events mapped out
+    - [ ] PubSub needs determined
+    - [ ] Performance considerations reviewed
+
+  implementation:
+    - [ ] Mount function complete
+    - [ ] All event handlers implemented
+    - [ ] PubSub handlers working (if needed)
+    - [ ] Template renders correctly
+    - [ ] Forms use to_form/1
+    - [ ] Streams used for collections
+
+  testing:
+    - [ ] Mount tests passing
+    - [ ] Event tests comprehensive
+    - [ ] Form submission tested
+    - [ ] Error cases covered
+    - [ ] Real-time updates tested
+
+  performance:
+    - [ ] Large lists use streams
+    - [ ] Minimal socket assigns
+    - [ ] Debouncing on search
+    - [ ] Optimistic UI where appropriate
+
+  ux:
+    - [ ] Loading states shown
+    - [ ] Empty states handled
+    - [ ] Error messages clear
+    - [ ] Success feedback provided
+
+liveview_best_practices:
+  socket_assigns:
+    - Keep minimal - only what's needed for rendering
+    - Use streams for collections
+    - Avoid storing large data structures
+
+  events:
+    - Name descriptively ("save", "delete", not "click")
+    - Use phx-value-* for event data
+    - Return {:noreply, socket} for updates
+
+  forms:
+    - Always use to_form/1
+    - Implement phx-change for validation
+    - Show errors inline
+    - Disable submit during processing
+
+  real_time:
+    - Subscribe in mount only if connected?(socket)
+    - Unsubscribe is automatic on disconnect
+    - Use PubSub for cross-LiveView updates
+
+common_pitfalls:
+  - Storing too much in socket assigns (memory bloat)
+  - Not using streams for large lists (performance)
+  - Forgetting phx-update="stream" on stream containers
+  - Not handling disconnected state
+  - Missing phx-value-* attributes
+  - Not testing concurrent updates
+
+estimated_time: 4-8 hours (depending on complexity)

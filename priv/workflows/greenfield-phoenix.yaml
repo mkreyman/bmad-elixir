@@ -1,0 +1,170 @@
+# BMAD Workflow: Greenfield Phoenix Application
+# Use this workflow when starting a brand new Phoenix project from scratch
+
+name: Greenfield Phoenix Application
+description: Complete workflow for building a new Phoenix application from inception to deployment
+type: greenfield
+framework: phoenix
+agents_involved:
+  - elixir-architect
+  - elixir-sm
+  - elixir-dev
+  - elixir-qa
+
+phases:
+  - name: Planning & Architecture
+    agent: elixir-architect
+    duration: 1-2 days
+    steps:
+      - Review requirements and define bounded contexts
+      - Design database schema and relationships
+      - Plan supervision tree for stateful processes
+      - Define multi-tenancy strategy (if applicable)
+      - Document architectural decisions
+    deliverables:
+      - Architecture document
+      - Database ERD
+      - Supervision tree diagram
+      - Context boundaries defined
+
+  - name: Project Setup
+    agent: elixir-dev
+    duration: 0.5 days
+    steps:
+      - Create new Phoenix project: "mix phx.new my_app"
+      - Set up git repository
+      - Configure development environment
+      - Add essential dependencies (credo, dialyzer, etc.)
+      - Initialize BMAD: "mix bmad.init --hooks"
+      - Configure database in config/dev.exs
+      - Run "mix ecto.create" to create database
+    deliverables:
+      - Working Phoenix skeleton
+      - Git repository initialized
+      - BMAD structure in place
+      - Database created
+
+  - name: Core Infrastructure
+    agent: elixir-dev
+    duration: 1-2 days
+    steps:
+      - Set up authentication (if needed)
+      - Configure error tracking (if using external service)
+      - Add health check endpoints
+      - Set up basic layouts and components
+      - Configure mailer (if needed)
+      - Add core utilities and helpers
+    deliverables:
+      - Authentication working
+      - Basic UI components
+      - Monitoring in place
+
+  - name: Feature Development Cycles
+    agent: elixir-sm
+    iterative: true
+    steps:
+      - SM creates story for next feature
+      - Architect reviews if architectural changes needed
+      - Dev implements following story tasks
+      - QA validates implementation
+      - Repeat for each feature
+    notes: |
+      This is where the main BMAD cycle operates:
+      1. SM creates story in stories/backlog/
+      2. Dev moves to stories/in-progress/
+      3. Dev implements, updates story with progress
+      4. QA validates, provides feedback
+      5. Story moves to stories/completed/
+
+  - name: Quality Gates
+    agent: elixir-qa
+    continuous: true
+    checks:
+      - All tests passing (mix test)
+      - Code quality (mix credo --strict)
+      - Type checking (mix dialyzer)
+      - Code formatted (mix format)
+      - Security audit (mix deps.audit)
+      - Documentation coverage
+    notes: Pre-commit hooks enforce these automatically
+
+  - name: Pre-Deployment
+    agent: elixir-qa
+    duration: 1 day
+    steps:
+      - Run full test suite with coverage report
+      - Performance testing
+      - Security audit
+      - Accessibility testing (if web UI)
+      - Cross-browser testing (if web UI)
+      - Load testing (if high traffic expected)
+    deliverables:
+      - Test coverage report
+      - Performance baseline
+      - Security audit results
+
+  - name: Deployment Prep
+    agent: elixir-dev
+    duration: 0.5-1 day
+    steps:
+      - Configure production secrets
+      - Set up release configuration
+      - Database migration strategy
+      - Configure monitoring and logging
+      - Prepare deployment documentation
+    deliverables:
+      - Production-ready release
+      - Deployment runbook
+      - Rollback procedures
+
+key_patterns:
+  authentication:
+    - Use pow or phx.gen.auth for standard auth
+    - Implement with Accounts context
+    - Use bcrypt for password hashing
+    - Session-based auth for web, token-based for API
+
+  contexts:
+    - One context per bounded domain
+    - Public API functions only
+    - Internal functions are private
+    - Tests via public API only
+
+  liveview:
+    - Use for interactive, real-time features
+    - Keep socket assigns minimal
+    - Use streams for large collections
+    - Implement optimistic UI updates
+
+  testing:
+    - Unit tests for contexts
+    - Controller tests for endpoints
+    - LiveView tests for interactive features
+    - Integration tests for critical flows
+
+quality_checklist:
+  - All contexts have comprehensive tests
+  - LiveViews handle all edge cases
+  - Error pages are user-friendly
+  - API endpoints validated and documented
+  - Database has proper indices
+  - Migrations are reversible
+  - No N+1 queries
+  - Proper authorization checks
+
+common_pitfalls:
+  - Skipping context design (leads to messy code)
+  - Fat controllers (move logic to contexts)
+  - Missing supervision for GenServers
+  - Not testing edge cases
+  - Forgetting database indices
+  - Exposing internal implementation details
+
+success_criteria:
+  - All tests passing (100%)
+  - Credo quality checks green
+  - Dialyzer type checks passing
+  - Documentation complete
+  - Performance benchmarks met
+  - Security audit passed
+  - Deployment successful

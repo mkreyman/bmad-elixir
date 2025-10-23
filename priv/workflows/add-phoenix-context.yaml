@@ -1,0 +1,284 @@
+# BMAD Workflow: Add Phoenix Context
+# Use this workflow when adding a new bounded context to your Phoenix application
+
+name: Add Phoenix Context
+description: Systematic workflow for adding a new Phoenix context with schema, migrations, and tests
+type: feature
+framework: phoenix
+complexity: medium
+agents_involved:
+  - elixir-architect
+  - elixir-dev
+  - elixir-qa
+
+steps:
+  - name: Define Context Boundary
+    agent: elixir-architect
+    duration: 30min - 1hr
+    actions:
+      - Identify the bounded domain (e.g., Accounts, Billing, Content)
+      - Define public API functions
+      - Identify relationships with other contexts
+      - Plan database schema and tables
+      - Document context responsibility
+    questions:
+      - What is the core domain concept?
+      - What operations will other contexts need?
+      - What data does this context own?
+      - How does it relate to existing contexts?
+    deliverable: Context design document
+
+  - name: Generate Context Skeleton
+    agent: elixir-dev
+    duration: 15-30min
+    commands:
+      - "mix phx.gen.context ContextName SchemaName table_name field:type ..."
+      - Example: "mix phx.gen.context Accounts User users email:string:unique name:string"
+    notes: |
+      This generates:
+      - lib/my_app/context_name.ex (context module)
+      - lib/my_app/context_name/schema_name.ex (schema)
+      - priv/repo/migrations/timestamp_create_table_name.exs
+      - test/my_app/context_name_test.exs
+      - test/support/fixtures/context_name_fixtures.ex
+
+  - name: Customize Schema
+    agent: elixir-dev
+    duration: 30min - 2hrs
+    tasks:
+      - Add associations (belongs_to, has_many, etc.)
+      - Define changeset validations
+      - Add virtual fields if needed
+      - Set up embedded schemas if needed
+      - Add database constraints
+    example: |
+      schema "users" do
+        field :email, :string
+        field :name, :string
+        has_many :posts, MyApp.Content.Post
+        belongs_to :organization, MyApp.Accounts.Organization
+
+        timestamps()
+      end
+
+      def changeset(user, attrs) do
+        user
+        |> cast(attrs, [:email, :name, :organization_id])
+        |> validate_required([:email, :name])
+        |> validate_format(:email, ~r/@/)
+        |> unique_constraint(:email)
+      end
+
+  - name: Enhance Migration
+    agent: elixir-dev
+    duration: 15-30min
+    tasks:
+      - Add indices for foreign keys
+      - Add indices for commonly queried fields
+      - Add unique constraints
+      - Add check constraints if needed
+      - Make migration reversible
+    example: |
+      def change do
+        create table(:users) do
+          add :email, :string, null: false
+          add :name, :string, null: false
+          add :organization_id, references(:organizations), null: false
+
+          timestamps()
+        end
+
+        create unique_index(:users, [:email])
+        create index(:users, [:organization_id])
+      end
+
+  - name: Implement Context API
+    agent: elixir-dev
+    duration: 2-4hrs
+    tasks:
+      - Implement list/query functions
+      - Implement get/fetch functions
+      - Implement create functions
+      - Implement update functions
+      - Implement delete functions
+      - Add filtering and sorting
+      - Add pagination if needed
+    patterns:
+      list_items: |
+        def list_users do
+          Repo.all(User)
+        end
+
+        def list_users(filters) do
+          User
+          |> apply_filters(filters)
+          |> Repo.all()
+        end
+
+      get_item: |
+        def get_user!(id), do: Repo.get!(User, id)
+        def get_user(id), do: Repo.get(User, id)
+
+      create_item: |
+        def create_user(attrs \\ %{}) do
+          %User{}
+          |> User.changeset(attrs)
+          |> Repo.insert()
+        end
+
+      update_item: |
+        def update_user(%User{} = user, attrs) do
+          user
+          |> User.changeset(attrs)
+          |> Repo.update()
+        end
+
+  - name: Write Comprehensive Tests
+    agent: elixir-dev
+    duration: 2-3hrs
+    test_categories:
+      - List functions (empty, with items, with filters)
+      - Get functions (found, not found)
+      - Create (valid attrs, invalid attrs, constraint violations)
+      - Update (valid changes, invalid changes)
+      - Delete (existing, non-existing)
+      - Associations (preload, join queries)
+    example: |
+      describe "list_users/0" do
+        test "returns all users" do
+          user = user_fixture()
+          assert Accounts.list_users() == [user]
+        end
+
+        test "returns empty list when no users" do
+          assert Accounts.list_users() == []
+        end
+      end
+
+      describe "create_user/1" do
+        test "creates user with valid attributes" do
+          attrs = %{email: "test@example.com", name: "Test"}
+          assert {:ok, %User{} = user} = Accounts.create_user(attrs)
+          assert user.email == "test@example.com"
+        end
+
+        test "returns error with invalid attributes" do
+          assert {:error, %Ecto.Changeset{}} = Accounts.create_user(%{})
+        end
+
+        test "enforces unique email" do
+          user_fixture(email: "test@example.com")
+          attrs = %{email: "test@example.com", name: "Another"}
+          assert {:error, changeset} = Accounts.create_user(attrs)
+          assert "has already been taken" in errors_on(changeset).email
+        end
+      end
+
+  - name: Run Migration
+    agent: elixir-dev
+    duration: 5min
+    commands:
+      - "mix ecto.migrate"
+      - "MIX_ENV=test mix ecto.migrate"
+    verification:
+      - Check migration ran successfully
+      - Verify table created in database
+      - Verify indices created
+
+  - name: Quality Validation
+    agent: elixir-qa
+    duration: 30min - 1hr
+    checks:
+      - Run tests: "mix test"
+      - Check coverage for new context
+      - Run credo: "mix credo lib/my_app/context_name"
+      - Verify changeset validations
+      - Test edge cases
+      - Verify database constraints work
+    success_criteria:
+      - All tests passing
+      - No credo issues
+      - Edge cases covered
+      - Constraints validated
+
+  - name: Documentation
+    agent: elixir-dev
+    duration: 30min
+    tasks:
+      - Add @moduledoc to context module
+      - Add @doc to all public functions
+      - Document return types
+      - Add usage examples
+      - Update architecture docs if needed
+    example: |
+      @moduledoc """
+      The Accounts context.
+
+      Manages user accounts, authentication, and organization membership.
+      """
+
+      @doc """
+      Returns the list of users.
+
+      ## Examples
+
+          iex> list_users()
+          [%User{}, ...]
+
+      """
+      def list_users do
+        Repo.all(User)
+      end
+
+checklist:
+  design:
+    - [ ] Context boundary clearly defined
+    - [ ] Public API functions identified
+    - [ ] Schema relationships planned
+    - [ ] Database constraints identified
+
+  implementation:
+    - [ ] Schema created with proper fields
+    - [ ] Associations defined correctly
+    - [ ] Changeset validations comprehensive
+    - [ ] Migration includes all indices
+    - [ ] Context API complete (CRUD operations)
+    - [ ] All functions properly tested
+
+  quality:
+    - [ ] All tests passing
+    - [ ] Test coverage adequate (80%+)
+    - [ ] No credo warnings
+    - [ ] Database constraints working
+    - [ ] Documentation complete
+
+  integration:
+    - [ ] Migration ran successfully
+    - [ ] No breaking changes to existing code
+    - [ ] Other contexts can use public API
+    - [ ] Performance tested with sample data
+
+common_patterns:
+  tenant_isolation:
+    - Add tenant_id to schema
+    - Filter all queries by tenant
+    - Add unique constraints scoped to tenant
+
+  soft_delete:
+    - Add deleted_at timestamp
+    - Filter out deleted records in queries
+    - Create restore function
+
+  audit_trail:
+    - Add inserted_by/updated_by fields
+    - Track who made changes
+    - Consider using audit log table
+
+anti_patterns:
+  - Exposing Ecto.Changeset in public API (return {:ok, item} or {:error, changeset})
+  - Fat contexts (split into smaller contexts if > 500 lines)
+  - Direct Repo calls in controllers (always go through context)
+  - Missing database indices on foreign keys
+  - Not testing constraint violations
+
+estimated_time: 4-8 hours (depending on complexity)
