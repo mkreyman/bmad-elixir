@@ -1,0 +1,629 @@
+# BMAD Workflow: Setup Test Fixtures and Mocks
+# Use this workflow when establishing test infrastructure for an Elixir/Phoenix project
+
+name: Setup Test Fixtures and Mocks
+description: Complete workflow for creating maintainable test data infrastructure with fixtures and mocks
+type: testing_infrastructure
+framework: exunit_testing
+complexity: medium
+agents_involved:
+  - test-fixtures-specialist
+  - elixir-dev
+  - elixir-qa
+
+prerequisites:
+  - ExUnit test framework set up
+  - Database schemas defined
+  - Understanding of entities that need test data
+  - Mox added to mix.exs (if mocking external dependencies)
+
+steps:
+  - name: Analyze Test Data Needs
+    agent: test-fixtures-specialist
+    duration: 30min
+    tasks:
+      - Identify all schemas that need fixtures
+      - Map entity relationships and associations
+      - Identify external dependencies requiring mocks
+      - Plan fixture utility helpers needed
+
+    deliverables:
+      - List of entities requiring fixtures
+      - Association graph
+      - List of dependencies to mock
+      - Plan for utility helpers
+
+  - name: Create Fixtures Module
+    agent: test-fixtures-specialist
+    duration: 1-2hrs
+    tasks:
+      - Create test/support/fixtures.ex
+      - Implement fixture/2 main function
+      - Create build/2 for each entity
+      - Handle associations intelligently
+
+    pattern: |
+      defmodule MyApp.Fixtures do
+        @moduledoc """
+        This module defines test helpers for creating entities for testing.
+        It consolidates all fixtures into a single module with a consistent interface.
+        """
+
+        alias MyApp.Repo
+        alias MyApp.Accounts.User
+        alias MyApp.Blog.Post
+        # ... other schemas
+
+        @doc """
+        Creates a record in the database based on the given schema and attributes.
+
+        This is the main fixture function that builds a struct and inserts it.
+        """
+        def fixture(schema, attrs \\ %{}) do
+          schema
+          |> build(attrs)
+          |> Repo.insert!()
+        end
+
+        @doc """
+        Builds a struct without inserting it into the database.
+        """
+        def build(:user, attrs) do
+          password = attrs[:password] || "Password123!"
+
+          %User{}
+          |> User.registration_changeset(
+            attrs
+            |> Enum.into(%{
+              email: "user-#{System.unique_integer([:positive])}@example.com",
+              name: "Test User",
+              password: password,
+              password_confirmation: password,
+              active: true
+            })
+          )
+        end
+
+        def build(:post, attrs) do
+          # Create user if not provided
+          user = attrs[:user] || fixture(:user)
+
+          %Post{}
+          |> Post.changeset(
+            attrs
+            |> Map.delete(:user)
+            |> Enum.into(%{
+              title: "Post #{System.unique_integer([:positive])}",
+              body: "Test post content",
+              user_id: user.id,
+              published: false
+            })
+          )
+        end
+
+        # Add build/2 for each schema
+      end
+
+    critical_rules:
+      - "Use System.unique_integer([:positive]) for ALL unique fields"
+      - "Use Decimal.new() for money fields (NEVER floats)"
+      - "Create associations if not provided (user = attrs[:user] || fixture(:user))"
+      - "Remove association keys before Enum.into (Map.delete(:user))"
+      - "Truncate DateTime to :second (DateTime.truncate(DateTime.utc_now(), :second))"
+
+  - name: Add Fixture Utility Helpers
+    agent: test-fixtures-specialist
+    duration: 30min-1hr
+    tasks:
+      - Create composite creation helpers
+      - Add bulk creation functions
+      - Implement state-specific helpers
+      - Add convenience functions
+
+    patterns:
+      composite_creation: |
+        @doc """
+        Creates a blog post with comments already attached.
+        """
+        def create_post_with_comments(attrs \\ %{}) do
+          user = attrs[:user] || fixture(:user)
+          comment_count = attrs[:comment_count] || 3
+
+          post = fixture(:post, Map.put(attrs, :user, user))
+
+          Enum.map(1..comment_count, fn i ->
+            fixture(:comment, %{
+              post: post,
+              user: user,
+              body: "Comment #{i}"
+            })
+          end)
+
+          post
+        end
+
+      bulk_creation: |
+        @doc """
+        Creates multiple posts for testing pagination.
+        """
+        def create_posts(count, attrs \\ %{}) do
+          user = attrs[:user] || fixture(:user)
+
+          Enum.map(1..count, fn i ->
+            post_attrs = Map.merge(attrs, %{
+              user: user,
+              title: "Post #{i}",
+              body: "Content for post #{i}"
+            })
+
+            fixture(:post, post_attrs)
+          end)
+        end
+
+      state_specific: |
+        @doc """
+        Creates a published post with specific timestamp.
+        """
+        def create_published_post(attrs \\ %{}) do
+          user = attrs[:user] || fixture(:user)
+          published_at = attrs[:published_at] ||
+            DateTime.utc_now() |> DateTime.truncate(:second)
+
+          fixture(:post, Map.merge(attrs, %{
+            user: user,
+            published: true,
+            published_at: published_at
+          }))
+        end
+
+  - name: Define Behaviours for Mockable Dependencies
+    agent: test-fixtures-specialist
+    duration: 30min-1hr
+    tasks:
+      - Identify external APIs and services
+      - Create behaviour modules in production code
+      - Define @callback for each function
+      - Update real implementations to use @behaviour
+
+    pattern: |
+      # In lib/my_app/integrations/email.ex (production code)
+      defmodule MyApp.Integrations.Email.EmailBehaviour do
+        @moduledoc """
+        Defines the behaviour for email service.
+        Allows mocking in tests.
+        """
+
+        @callback send_email(to :: String.t(), subject :: String.t(), body :: String.t()) ::
+          {:ok, map()} | {:error, any()}
+
+        @callback send_template_email(to :: String.t(), template :: String.t(), vars :: map()) ::
+          {:ok, map()} | {:error, any()}
+      end
+
+      defmodule MyApp.Integrations.Email do
+        @behaviour MyApp.Integrations.Email.EmailBehaviour
+
+        @impl true
+        def send_email(to, subject, body) do
+          # Real SendGrid/Mailgun/etc API call
+          case HTTPoison.post(email_service_url(), build_payload(to, subject, body)) do
+            {:ok, %{status_code: 200, body: response}} ->
+              {:ok, Jason.decode!(response)}
+            {:ok, %{status_code: status}} ->
+              {:error, "Failed with status #{status}"}
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end
+
+        @impl true
+        def send_template_email(to, template, vars) do
+          # Implementation
+        end
+      end
+
+  - name: Create Mocks Module
+    agent: test-fixtures-specialist
+    duration: 30min
+    tasks:
+      - Create test/support/mocks.ex
+      - Add Mox.defmock for each behaviour
+      - Create mock modules with stubs if needed
+      - Document mock usage
+
+    pattern: |
+      defmodule MyApp.Mocks do
+        @moduledoc """
+        Defines all mocks for testing using Mox.
+        All mocks in one place for better organization and discoverability.
+        """
+
+        # Define mock for email service
+        Mox.defmock(MyApp.MockEmail,
+          for: MyApp.Integrations.Email.EmailBehaviour
+        )
+
+        # Define mock for payment processor
+        Mox.defmock(MyApp.MockPaymentProcessor,
+          for: MyApp.Integrations.PaymentProcessor.PaymentBehaviour
+        )
+
+        # Define mock for external API
+        Mox.defmock(MyApp.MockExternalAPI,
+          for: MyApp.Integrations.ExternalAPI.APIBehaviour
+        )
+      end
+
+    mock_module_stubs: |
+      # For modules that need stub implementations
+      defmodule MyApp.MockSettings do
+        @moduledoc """
+        Mock implementation of Settings module for testing.
+        Provides test-safe stub implementations.
+        """
+
+        def get_setting_value(key, default \\ nil)
+
+        def get_setting_value("api_key", _default) do
+          {:ok, "test_api_key_12345"}
+        end
+
+        def get_setting_value("feature_flag", _default) do
+          {:ok, "true"}
+        end
+
+        # Default: return default value for safety
+        def get_setting_value(_key, default) do
+          {:ok, default}
+        end
+      end
+
+  - name: Enhance DataCase with Helpers
+    agent: test-fixtures-specialist
+    duration: 30min
+    tasks:
+      - Add errors_on/1 helper
+      - Add assert_unique_constraint/3
+      - Add custom setup helpers
+      - Add test credential setup
+
+    pattern: |
+      defmodule MyApp.DataCase do
+        use ExUnit.CaseTemplate
+
+        using do
+          quote do
+            alias MyApp.Repo
+            import Ecto
+            import Ecto.Changeset
+            import Ecto.Query
+            import MyApp.DataCase
+          end
+        end
+
+        setup tags do
+          MyApp.DataCase.setup_sandbox(tags)
+
+          # Set up test credentials if needed
+          unless tags[:skip_test_credentials] do
+            setup_test_credentials()
+          end
+
+          :ok
+        end
+
+        def setup_sandbox(tags) do
+          pid = Ecto.Adapters.SQL.Sandbox.start_owner!(
+            MyApp.Repo,
+            shared: not tags[:async]
+          )
+          on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+        end
+
+        @doc """
+        Sets up test credentials for API integrations.
+        """
+        def setup_test_credentials do
+          alias MyApp.{Fixtures, Settings}
+
+          tenant = Fixtures.fixture(:tenant)
+
+          Settings.put_encrypted_setting(
+            tenant.id,
+            "api_key",
+            "test_api_key_12345"
+          )
+
+          :ok
+        end
+
+        @doc """
+        A helper that transforms changeset errors into a map of messages.
+        """
+        def errors_on(changeset) do
+          Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
+            Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+              opts
+              |> Keyword.get(String.to_existing_atom(key), key)
+              |> to_string()
+            end)
+          end)
+        end
+
+        @doc """
+        Helper to test uniqueness constraints.
+        """
+        def assert_unique_constraint(changeset, field, message \\ "has already been taken") do
+          {:error, failed_changeset} = MyApp.Repo.insert(changeset)
+          assert %{^field => [^message]} = errors_on(failed_changeset)
+          failed_changeset
+        end
+      end
+
+  - name: Write Tests Using Fixtures and Mocks
+    agent: elixir-qa
+    duration: varies
+    tasks:
+      - Import Fixtures in test modules
+      - Use fixtures in setup blocks
+      - Set up mock expectations
+      - Write comprehensive tests
+
+    basic_test_pattern: |
+      defmodule MyApp.PostsTest do
+        use MyApp.DataCase, async: true
+
+        alias MyApp.Blog
+        import MyApp.Fixtures
+
+        describe "create_post/2" do
+          setup do
+            user = fixture(:user)
+            %{user: user}
+          end
+
+          test "creates post with valid attributes", %{user: user} do
+            attrs = %{
+              title: "Test Post",
+              body: "Test content"
+            }
+
+            assert {:ok, post} = Blog.create_post(user, attrs)
+            assert post.title == "Test Post"
+            assert post.body == "Test content"
+            assert post.user_id == user.id
+          end
+
+          test "requires title", %{user: user} do
+            attrs = %{body: "Content without title"}
+
+            assert {:error, changeset} = Blog.create_post(user, attrs)
+            assert %{title: ["can't be blank"]} = errors_on(changeset)
+          end
+        end
+
+        describe "list_posts/0" do
+          test "returns all posts ordered by date" do
+            user = fixture(:user)
+            _old_post = fixture(:post, %{user: user, title: "Old"})
+            new_post = fixture(:post, %{user: user, title: "New"})
+
+            posts = Blog.list_posts()
+
+            assert length(posts) == 2
+            assert hd(posts).id == new_post.id
+          end
+
+          test "preloads user association" do
+            user = fixture(:user, %{name: "John Doe"})
+            fixture(:post, %{user: user})
+
+            posts = Blog.list_posts()
+
+            assert hd(posts).user.name == "John Doe"
+          end
+        end
+      end
+
+    mock_test_pattern: |
+      defmodule MyApp.NotificationsTest do
+        use MyApp.DataCase, async: true
+
+        import Mox
+        import MyApp.Fixtures
+
+        # Ensure mocks are verified
+        setup :verify_on_exit!
+
+        describe "notify_user/2" do
+          test "sends email via email service" do
+            user = fixture(:user, %{email: "test@example.com"})
+
+            # Set up mock expectation
+            expect(MyApp.MockEmail, :send_email, fn to, subject, body ->
+              assert to == "test@example.com"
+              assert subject =~ "Notification"
+              assert body =~ "Hello"
+              {:ok, %{id: "msg_123", status: "sent"}}
+            end)
+
+            # Execute code that calls mock
+            assert {:ok, result} = MyApp.Notifications.notify_user(user, "Hello")
+            assert result.id == "msg_123"
+          end
+
+          test "handles email service failure" do
+            user = fixture(:user)
+
+            # Mock returns error
+            expect(MyApp.MockEmail, :send_email, fn _, _, _ ->
+              {:error, :service_unavailable}
+            end)
+
+            assert {:error, :service_unavailable} =
+              MyApp.Notifications.notify_user(user, "Test")
+          end
+
+          test "sends multiple emails in batch" do
+            users = [fixture(:user), fixture(:user), fixture(:user)]
+
+            # Stub for multiple calls
+            stub(MyApp.MockEmail, :send_email, fn _, _, _ ->
+              {:ok, %{status: "sent"}}
+            end)
+
+            assert {:ok, results} = MyApp.Notifications.notify_users(users, "Batch")
+            assert length(results) == 3
+          end
+        end
+      end
+
+  - name: Document Fixture Usage
+    agent: test-fixtures-specialist
+    duration: 15-30min
+    tasks:
+      - Add @moduledoc to fixtures.ex
+      - Document each fixture function
+      - Add usage examples
+      - Create testing guide
+
+    documentation_pattern: |
+      defmodule MyApp.Fixtures do
+        @moduledoc """
+        Test fixtures for MyApp.
+
+        This module provides test data creation helpers for all entities in the system.
+        All fixtures use intelligent defaults and can be customized via attributes.
+
+        ## Usage
+
+        Basic fixture creation:
+
+            user = fixture(:user)
+            post = fixture(:post, %{user: user, title: "Custom Title"})
+
+        Building without insert:
+
+            changeset = build(:user, %{email: "custom@example.com"})
+
+        Utility helpers:
+
+            posts = create_posts(10)  # Creates 10 posts
+            post = create_published_post()  # Creates published post
+
+        ## Available Fixtures
+
+        - `:user` - Creates a user with email, password
+        - `:post` - Creates a blog post (creates user if not provided)
+        - `:comment` - Creates a comment (creates post and user if not provided)
+
+        See individual function docs for details.
+        """
+
+        @doc """
+        Creates a user fixture.
+
+        ## Options
+
+        - `:email` - Custom email (default: unique generated email)
+        - `:name` - User's name (default: "Test User")
+        - `:password` - Password (default: "Password123!")
+        - `:active` - Account status (default: true)
+
+        ## Examples
+
+            user = fixture(:user)
+            admin = fixture(:user, %{email: "admin@example.com", name: "Admin"})
+        """
+        def build(:user, attrs) do
+          # Implementation
+        end
+      end
+
+  - name: Validate Test Infrastructure
+    agent: elixir-qa
+    duration: 30min
+    tasks:
+      - Run all tests to verify fixtures work
+      - Check mock expectations verify
+      - Ensure tests run in parallel (async: true)
+      - Verify no test pollution or shared state
+
+    validation_commands: |
+      # Run all tests
+      mix test
+
+      # Run specific test file
+      mix test test/my_app/posts_test.exs
+
+      # Run with coverage
+      mix test --cover
+
+      # Run only failed tests
+      mix test --failed
+
+      # Run tests matching pattern
+      mix test --only focus
+
+    success_criteria:
+      - All tests pass
+      - No warnings or compilation errors
+      - Tests run in parallel without issues
+      - Mocks verify correctly
+      - No database constraint violations
+      - Clean test output
+
+checklist:
+  fixtures:
+    - [ ] test/support/fixtures.ex created
+    - [ ] fixture/2 main function implemented
+    - [ ] build/2 for all entities
+    - [ ] System.unique_integer used for unique fields
+    - [ ] Associations handled intelligently
+    - [ ] Decimal.new used for money fields
+    - [ ] DateTime.truncate used for timestamps
+    - [ ] Utility helpers added
+    - [ ] All fixtures documented
+
+  mocks:
+    - [ ] Behaviours defined in production code
+    - [ ] test/support/mocks.ex created
+    - [ ] Mox.defmock for all external dependencies
+    - [ ] Mock modules with stubs (if needed)
+    - [ ] Mocks documented
+
+  data_case:
+    - [ ] errors_on/1 helper added
+    - [ ] assert_unique_constraint/3 added
+    - [ ] Custom setup helpers added
+    - [ ] Test credential setup (if needed)
+
+  tests:
+    - [ ] Import Fixtures in all test modules
+    - [ ] Use setup blocks for common data
+    - [ ] Tests use async: true
+    - [ ] Mock tests use verify_on_exit!
+    - [ ] Happy path and edge cases covered
+    - [ ] All tests pass
+
+best_practices:
+  - "Single fixtures.ex module for ALL test data"
+  - "Single mocks.ex module for ALL mocks"
+  - "Use System.unique_integer for uniqueness"
+  - "Create associations if not provided"
+  - "Define behaviours before mocking"
+  - "Use async: true for parallel tests"
+  - "Always verify_on_exit! with Mox"
+  - "Document all fixtures and mocks"
+
+common_pitfalls:
+  - "Scattered fixtures across test files"
+  - "Hardcoded values causing uniqueness conflicts"
+  - "Using floats for money (use Decimal)"
+  - "Forgetting to remove association keys before Enum.into"
+  - "Not truncating DateTime to :second"
+  - "Mocking without defining behaviour first"
+  - "Forgetting verify_on_exit! in mock tests"
+  - "Shared mutable state between tests"
+
+estimated_time: 3-5 hours (initial setup)
