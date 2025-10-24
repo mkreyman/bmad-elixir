@@ -124,6 +124,93 @@ Install with:
 mix bmad.init --hooks
 ```
 
+## Local Development
+
+### Running Quality Checks
+
+Run all quality checks locally before committing:
+
+```bash
+mix precommit
+```
+
+This runs:
+1. **Format check** - `mix format --check-formatted`
+2. **Compilation** - `mix compile --warnings-as-errors`
+3. **Credo** - `mix credo --strict`
+4. **Dialyzer** - `mix dialyzer` (type checking)
+5. **Tests** - `mix test`
+
+If you have git hooks installed, these checks run automatically on every commit.
+
+### Individual Quality Checks
+
+Run checks individually during development:
+
+```bash
+# Format code
+mix format
+
+# Static analysis
+mix credo --strict
+
+# Type checking (first run builds PLT - takes 1-2 minutes)
+mix dialyzer
+
+# Run tests
+mix test
+```
+
+## CI/CD Pipeline
+
+### GitHub Actions
+
+This package includes a production-ready GitHub Actions workflow in `.github/workflows/ci.yml` that runs on every push and pull request.
+
+#### Pipeline Jobs
+
+1. **Quality Check** (runs once)
+   - Code formatting validation
+   - Compilation with warnings as errors
+   - Credo static analysis (strict mode)
+
+2. **Tests** (matrix: Elixir 1.14-1.16, OTP 25-26)
+   - Runs test suite on multiple Elixir/OTP versions
+   - Ensures compatibility across versions
+
+3. **Dialyzer** (runs once)
+   - Type checking with Dialyzer
+   - PLT files cached for faster builds
+
+#### Caching Strategy
+
+The workflow includes intelligent caching:
+- Dependencies (`deps/`, `_build/`)
+- PLT files (`priv/plts/`) for faster Dialyzer runs
+
+#### Multi-Version Testing
+
+Tests run on:
+- Elixir 1.16.0 + OTP 26.2
+- Elixir 1.15.7 + OTP 25.3
+- Elixir 1.14.5 + OTP 25.3
+
+### Adding to Your Project
+
+The workflow is installed when you run `mix bmad.init`. To use it in your Phoenix project:
+
+1. Ensure `.github/workflows/ci.yml` exists
+2. Ensure you have `mix.exs` with precommit alias configured
+3. Push to GitHub - the workflow runs automatically
+
+### Status Badges
+
+Add CI status badges to your README:
+
+```markdown
+[![CI](https://github.com/yourusername/your_repo/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/your_repo/actions/workflows/ci.yml)
+```
+
 ## Configuration
 
 Edit `.bmad/config.yaml` to customize:

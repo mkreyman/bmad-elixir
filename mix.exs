@@ -15,7 +15,12 @@ defmodule BmadElixir.MixProject do
       package: package(),
       name: "BmadElixir",
       source_url: @source_url,
-      docs: docs()
+      docs: docs(),
+      aliases: aliases(),
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        plt_add_apps: [:mix, :ex_unit]
+      ]
     ]
   end
 
@@ -28,7 +33,17 @@ defmodule BmadElixir.MixProject do
   defp deps do
     [
       {:yaml_elixir, "~> 2.9"},
-      {:ex_doc, "~> 0.31", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        precommit: :test
+      ]
     ]
   end
 
@@ -58,6 +73,18 @@ defmodule BmadElixir.MixProject do
       extras: ["README.md", "CHANGELOG.md"],
       source_ref: "v#{@version}",
       source_url: @source_url
+    ]
+  end
+
+  defp aliases do
+    [
+      precommit: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict",
+        "dialyzer",
+        "test"
+      ]
     ]
   end
 end

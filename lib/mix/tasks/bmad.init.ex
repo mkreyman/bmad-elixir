@@ -242,12 +242,10 @@ defmodule Mix.Tasks.Bmad.Init do
   defp install_git_hooks(opts) do
     Mix.shell().info("🎣 Installing git hooks...")
 
-    priv_dir = :code.priv_dir(:bmad_elixir)
-    hooks_src = Path.join(priv_dir, "hooks")
+    if File.exists?(".git") do
+      priv_dir = :code.priv_dir(:bmad_elixir)
+      hooks_src = Path.join(priv_dir, "hooks")
 
-    if !File.exists?(".git") do
-      Mix.shell().error("   ✗ Not a git repository, skipping hooks")
-    else
       hooks_to_install = [
         "pre-commit",
         "commit-msg",
@@ -257,23 +255,28 @@ defmodule Mix.Tasks.Bmad.Init do
       ]
 
       Enum.each(hooks_to_install, fn hook_name ->
-        src = Path.join(hooks_src, "#{hook_name}.sh")
-        dest = Path.join(".git/hooks", hook_name)
-
-        if File.exists?(src) do
-          if File.exists?(dest) and !opts[:force] do
-            Mix.shell().info(
-              "   ⚠ #{hook_name} already exists, skipping (use --force to overwrite)"
-            )
-          else
-            File.cp!(src, dest)
-            File.chmod!(dest, 0o755)
-            Mix.shell().info("   ✓ Installed #{hook_name}")
-          end
-        else
-          Mix.shell().info("   ⚠ #{hook_name}.sh not found in package")
-        end
+        install_single_hook(hooks_src, hook_name, opts)
       end)
+    else
+      Mix.shell().error("   ✗ Not a git repository, skipping hooks")
+    end
+  end
+
+  defp install_single_hook(hooks_src, hook_name, opts) do
+    src = Path.join(hooks_src, "#{hook_name}.sh")
+    dest = Path.join(".git/hooks", hook_name)
+
+    cond do
+      !File.exists?(src) ->
+        Mix.shell().info("   ⚠ #{hook_name}.sh not found in package")
+
+      File.exists?(dest) and !opts[:force] ->
+        Mix.shell().info("   ⚠ #{hook_name} already exists, skipping (use --force to overwrite)")
+
+      true ->
+        File.cp!(src, dest)
+        File.chmod!(dest, 0o755)
+        Mix.shell().info("   ✓ Installed #{hook_name}")
     end
   end
 end

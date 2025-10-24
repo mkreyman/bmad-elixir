@@ -3,6 +3,8 @@ defmodule Mix.Tasks.Bmad.InitTest do
 
   import ExUnit.CaptureIO
 
+  alias Mix.Tasks.Bmad.Init
+
   @tmp_dir "tmp/test_project"
 
   setup do
@@ -30,7 +32,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
   describe "mix bmad.init" do
     test "creates directory structure" do
       capture_io(fn ->
-        Mix.Tasks.Bmad.Init.run([])
+        Init.run([])
       end)
 
       assert File.dir?(".bmad")
@@ -46,7 +48,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
 
     test "creates config file" do
       capture_io(fn ->
-        Mix.Tasks.Bmad.Init.run([])
+        Init.run([])
       end)
 
       assert File.exists?(".bmad/config.yaml")
@@ -60,7 +62,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
 
     test "creates stories README" do
       capture_io(fn ->
-        Mix.Tasks.Bmad.Init.run([])
+        Init.run([])
       end)
 
       assert File.exists?("stories/README.md")
@@ -73,7 +75,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
     test "outputs success message" do
       output =
         capture_io(fn ->
-          Mix.Tasks.Bmad.Init.run([])
+          Init.run([])
         end)
 
       assert output =~ "🚀 Initializing BMAD"
@@ -84,7 +86,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
     test "respects --force flag for config" do
       # First run
       capture_io(fn ->
-        Mix.Tasks.Bmad.Init.run([])
+        Init.run([])
       end)
 
       # Modify config
@@ -93,7 +95,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
       # Run without --force (should not overwrite)
       output =
         capture_io(fn ->
-          Mix.Tasks.Bmad.Init.run([])
+          Init.run([])
         end)
 
       assert output =~ "Config already exists, skipping"
@@ -101,7 +103,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
 
       # Run with --force (should overwrite)
       capture_io(fn ->
-        Mix.Tasks.Bmad.Init.run(["--force"])
+        Init.run(["--force"])
       end)
 
       config = File.read!(".bmad/config.yaml")
@@ -113,7 +115,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
     test "installs git hooks when --hooks flag provided" do
       output =
         capture_io(fn ->
-          Mix.Tasks.Bmad.Init.run(["--hooks"])
+          Init.run(["--hooks"])
         end)
 
       assert output =~ "🎣 Installing git hooks"
@@ -128,7 +130,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
 
       output =
         capture_io(fn ->
-          Mix.Tasks.Bmad.Init.run(["--hooks"])
+          Init.run(["--hooks"])
         end)
 
       # Should not crash, just skip hooks
@@ -139,7 +141,7 @@ defmodule Mix.Tasks.Bmad.InitTest do
   describe "directory structure" do
     test "creates all required subdirectories" do
       capture_io(fn ->
-        Mix.Tasks.Bmad.Init.run([])
+        Init.run([])
       end)
 
       required_dirs = [
