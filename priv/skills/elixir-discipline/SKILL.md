@@ -32,7 +32,12 @@ This is NOT optional. This is NOT negotiable. You CANNOT rationalize your way ou
    → USE `elixir-no-shortcuts` skill
    → Fix the real problem
 
-5. **Am I proposing to "just try" something?**
+5. **Am I creating placeholder code or default values for required data?**
+   → STOP IMMEDIATELY
+   → USE `elixir-no-placeholders` skill
+   → Fail loud, fail fast, no silent failures
+
+6. **Am I proposing to "just try" something?**
    → STOP
    → Use systematic debugging instead
 
@@ -76,6 +81,7 @@ WRONG. Doing it wrong takes longer. Use the skills.
 - elixir-root-cause-only: [YES/NO - reason]
 - elixir-verification-gate: [YES/NO - reason]
 - elixir-no-shortcuts: [YES/NO - reason]
+- elixir-no-placeholders: [YES/NO - reason]
 
 [Using skill: SKILL_NAME]
 ```
@@ -103,6 +109,11 @@ WRONG. Doing it wrong takes longer. Use the skills.
 - When: About to modify ignore files or suppress warnings
 - Enforces: Fix the real problem
 - Prevents: Technical debt accumulation
+
+**elixir-no-placeholders**
+- When: Creating ANY code or data structures
+- Enforces: No placeholder code, no defaults for required data, fail loud
+- Prevents: Silent failures, debugging nightmares, masked bugs
 
 ## CONSEQUENCES OF SKIPPING SKILLS
 

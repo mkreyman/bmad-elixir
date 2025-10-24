@@ -309,7 +309,8 @@ defmodule Mix.Tasks.Bmad.Init do
       "elixir-tdd-enforcement",
       "elixir-no-shortcuts",
       "elixir-verification-gate",
-      "elixir-root-cause-only"
+      "elixir-root-cause-only",
+      "elixir-no-placeholders"
     ]
 
     Enum.each(skills_to_install, fn skill_name ->
