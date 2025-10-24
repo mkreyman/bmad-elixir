@@ -168,6 +168,23 @@ end
 
 **If ANY answer is YES → Use this skill to fix the real problem.**
 
+## BANNED PHRASES
+
+If you're about to say ANY of these phrases, **STOP IMMEDIATELY** and use this skill:
+
+❌ "This is a minor warning"
+❌ "This will be implemented later"
+❌ "It's not related to MY changes"
+❌ "These warnings are safe to ignore"
+❌ "I'll add a TODO and come back to it"
+❌ "This is a false positive"
+❌ "The code works fine, the tool is being pedantic"
+❌ "Adding to ignore is just for this one case"
+❌ "This function is too complex to refactor right now"
+❌ "Let's just disable this check for now"
+
+**Instead:** Fix the actual problem. Now. While context is fresh.
+
 ## THE DEBUGGING PROCESS
 
 When you encounter an error:
@@ -216,6 +233,18 @@ When you encounter an error:
 
 ### "The test is flaky, I'll just comment it out"
 **WRONG.** Flaky tests indicate real problems (race conditions, improper setup/teardown, environmental dependencies). Fix the flakiness.
+
+### "This is minor warning"
+**WRONG.** No warning is minor. Every warning is the compiler/tool trying to tell you something important. "Minor" warnings become major bugs in production.
+
+### "This will be implemented later"
+**WRONG.** This is TODO hell. Either implement it NOW or don't write the code at all. Placeholder implementations with "TODO: implement later" never get implemented - they become permanent technical debt.
+
+### "It's not related to MY changes"
+**WRONG.** You touched the code, you own it. The warning appeared on your watch - fix it. "Not my problem" attitude leads to rotting codebases. Leave the code better than you found it.
+
+### "These warnings are safe to ignore"
+**WRONG.** There is no such thing as a "safe to ignore" warning. If a warning was truly safe to ignore, the tool wouldn't emit it. Every warning has a reason - understand it and fix the code.
 
 ## CONSEQUENCES OF TAKING SHORTCUTS
 
@@ -307,3 +336,7 @@ def handle_result({:error, reason}), do: {:error, reason}
 > "Technical debt isn't free - you pay interest every single day."
 
 > "Fix the code, not the tooling."
+
+> "Minor warnings become major bugs. 'Later' means never. 'Not my changes' means rotting codebase."
+
+> "You touched it, you own it. Leave the code better than you found it."
