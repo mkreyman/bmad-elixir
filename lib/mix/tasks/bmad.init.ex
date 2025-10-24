@@ -155,11 +155,14 @@ defmodule Mix.Tasks.Bmad.Init do
 
     config_path = ".bmad/config.yaml"
 
-    if File.exists?(config_path) and not opts[:force] do
+    if File.exists?(config_path) and !opts[:force] do
       Mix.shell().info("   ⚠ Config already exists, skipping (use --force to overwrite)")
     else
-      app_name = Mix.Project.config()[:app]
-      app_module = Mix.Project.config()[:app] |> to_string() |> Macro.camelize()
+      app_module =
+        case Mix.Project.config()[:app] do
+          nil -> "MyApp"
+          app -> app |> to_string() |> Macro.camelize()
+        end
 
       config_content = """
       # BMAD Configuration for #{app_module}
@@ -242,34 +245,35 @@ defmodule Mix.Tasks.Bmad.Init do
     priv_dir = :code.priv_dir(:bmad_elixir)
     hooks_src = Path.join(priv_dir, "hooks")
 
-    if not File.exists?(".git") do
+    if !File.exists?(".git") do
       Mix.shell().error("   ✗ Not a git repository, skipping hooks")
-      return
-    end
+    else
+      hooks_to_install = [
+        "pre-commit",
+        "commit-msg",
+        "prepare-commit-msg",
+        "post-checkout",
+        "post-merge"
+      ]
 
-    hooks_to_install = [
-      "pre-commit",
-      "commit-msg",
-      "prepare-commit-msg",
-      "post-checkout",
-      "post-merge"
-    ]
+      Enum.each(hooks_to_install, fn hook_name ->
+        src = Path.join(hooks_src, "#{hook_name}.sh")
+        dest = Path.join(".git/hooks", hook_name)
 
-    Enum.each(hooks_to_install, fn hook_name ->
-      src = Path.join(hooks_src, "#{hook_name}.sh")
-      dest = Path.join(".git/hooks", hook_name)
-
-      if File.exists?(src) do
-        if File.exists?(dest) and not opts[:force] do
-          Mix.shell().info("   ⚠ #{hook_name} already exists, skipping (use --force to overwrite)")
+        if File.exists?(src) do
+          if File.exists?(dest) and !opts[:force] do
+            Mix.shell().info(
+              "   ⚠ #{hook_name} already exists, skipping (use --force to overwrite)"
+            )
+          else
+            File.cp!(src, dest)
+            File.chmod!(dest, 0o755)
+            Mix.shell().info("   ✓ Installed #{hook_name}")
+          end
         else
-          File.cp!(src, dest)
-          File.chmod!(dest, 0o755)
-          Mix.shell().info("   ✓ Installed #{hook_name}")
+          Mix.shell().info("   ⚠ #{hook_name}.sh not found in package")
         end
-      else
-        Mix.shell().info("   ⚠ #{hook_name}.sh not found in package")
-      end
-    end)
+      end)
+    end
   end
 end
