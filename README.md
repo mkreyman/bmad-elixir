@@ -124,6 +124,86 @@ Install with:
 mix bmad.init --hooks
 ```
 
+## Claude Code Skills
+
+BMAD includes Claude Code Skills - executable workflows that Claude Code automatically discovers and uses when appropriate.
+
+### What Are Skills?
+
+Skills are specialized capabilities that Claude Code loads on-demand based on your task. Unlike agents (which are comprehensive reference docs), skills are focused, executable workflows with specific triggers.
+
+**Key Differences:**
+- **Agents** (`.bmad/agents/`) - Comprehensive expertise you manually reference
+- **Skills** (`.claude/skills/`) - Auto-invoked workflows Claude Code discovers
+
+### Available Skills
+
+**elixir-quality-gate**
+- Runs comprehensive quality checks (format, credo, dialyzer, tests)
+- Auto-triggers when validating code quality or before commits
+
+**phoenix-generator**
+- Guides using `mix phx.gen.*` commands with best practices
+- Auto-triggers when creating Phoenix resources or schemas
+
+**ecto-migration-helper**
+- Creates and manages Ecto migrations safely
+- Auto-triggers when working with database schema changes
+
+**elixir-test-runner**
+- Runs ExUnit tests with smart filtering and debugging
+- Auto-triggers when running or debugging tests
+
+**phoenix-context-creator**
+- Creates well-designed Phoenix contexts following best practices
+- Auto-triggers when designing new features or contexts
+
+### Installation
+
+```bash
+# Install skills to .claude/skills/
+mix bmad.init --skills
+
+# Install both hooks and skills
+mix bmad.init --hooks --skills
+```
+
+### How Skills Work
+
+Skills use YAML frontmatter to declare when they should activate:
+
+```yaml
+---
+name: elixir-quality-gate
+description: Run comprehensive Elixir quality checks (format, credo, dialyzer, tests). Use when validating code quality or before commits.
+---
+```
+
+When you ask Claude Code to "run quality checks," it automatically:
+1. Reads skill descriptions
+2. Identifies relevant skills
+3. Loads and executes the appropriate workflow
+
+### Project vs Personal Skills
+
+**Project Skills** (`.claude/skills/`) - Shared with team via git:
+```bash
+mix bmad.init --skills  # Installs to .claude/skills/
+git add .claude/skills/
+```
+
+**Personal Skills** (`~/.claude/skills/`) - Your personal toolkit:
+```bash
+cp -r .claude/skills/* ~/.claude/skills/
+```
+
+### Creating Custom Skills
+
+See the installed skills as examples. Each skill is a directory containing:
+- `SKILL.md` (required) - YAML frontmatter + instructions
+- `scripts/` (optional) - Helper scripts
+- `templates/` (optional) - Code templates
+
 ## Local Development
 
 ### Running Quality Checks

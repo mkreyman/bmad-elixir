@@ -6,7 +6,9 @@ defmodule Mix.Tasks.Bmad.Init do
 
       mix bmad.init
       mix bmad.init --hooks     # Also install git hooks
+      mix bmad.init --skills    # Also install Claude Code skills
       mix bmad.init --force     # Overwrite existing files
+      mix bmad.init --hooks --skills  # Install both hooks and skills
 
   ## What this task does
 
@@ -41,6 +43,7 @@ defmodule Mix.Tasks.Bmad.Init do
 
   @switches [
     hooks: :boolean,
+    skills: :boolean,
     force: :boolean
   ]
 
@@ -59,6 +62,10 @@ defmodule Mix.Tasks.Bmad.Init do
 
     if opts[:hooks] do
       install_git_hooks(opts)
+    end
+
+    if opts[:skills] do
+      install_claude_skills(opts)
     end
 
     Mix.shell().info("")
@@ -277,6 +284,50 @@ defmodule Mix.Tasks.Bmad.Init do
         File.cp!(src, dest)
         File.chmod!(dest, 0o755)
         Mix.shell().info("   ✓ Installed #{hook_name}")
+    end
+  end
+
+  defp install_claude_skills(opts) do
+    Mix.shell().info("🎯 Installing Claude Code skills...")
+
+    # Create .claude/skills directory
+    skills_dest = ".claude/skills"
+    File.mkdir_p!(skills_dest)
+
+    priv_dir = :code.priv_dir(:bmad_elixir)
+    skills_src = Path.join(priv_dir, "skills")
+
+    skills_to_install = [
+      "elixir-quality-gate",
+      "phoenix-generator",
+      "ecto-migration-helper",
+      "elixir-test-runner",
+      "phoenix-context-creator"
+    ]
+
+    Enum.each(skills_to_install, fn skill_name ->
+      install_single_skill(skills_src, skills_dest, skill_name, opts)
+    end)
+
+    Mix.shell().info("")
+    Mix.shell().info("   💡 Skills installed to .claude/skills/")
+    Mix.shell().info("   💡 Claude Code will automatically discover and use these skills")
+  end
+
+  defp install_single_skill(skills_src, skills_dest, skill_name, opts) do
+    src_dir = Path.join(skills_src, skill_name)
+    dest_dir = Path.join(skills_dest, skill_name)
+
+    cond do
+      !File.exists?(src_dir) ->
+        Mix.shell().info("   ⚠ #{skill_name} not found in package")
+
+      File.exists?(dest_dir) and !opts[:force] ->
+        Mix.shell().info("   ⚠ #{skill_name} already exists, skipping (use --force to overwrite)")
+
+      true ->
+        File.cp_r!(src_dir, dest_dir)
+        Mix.shell().info("   ✓ Installed #{skill_name}")
     end
   end
 end
