@@ -2,7 +2,7 @@ defmodule BmadElixir.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/yourusername/bmad_elixir"
+  @source_url "https://github.com/mkreyman/bmad-elixir"
 
   def project do
     [
@@ -63,7 +63,7 @@ defmodule BmadElixir.MixProject do
         "GitHub" => @source_url,
         "BMAD-METHOD" => "https://github.com/bmad-code-org/BMAD-METHOD"
       },
-      maintainers: ["Your Name"]
+      maintainers: ["Mark Kreyman"]
     ]
   end
 
