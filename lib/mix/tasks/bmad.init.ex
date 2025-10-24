@@ -298,11 +298,18 @@ defmodule Mix.Tasks.Bmad.Init do
     skills_src = Path.join(priv_dir, "skills")
 
     skills_to_install = [
+      # Workflow Skills
       "elixir-quality-gate",
       "phoenix-generator",
       "ecto-migration-helper",
       "elixir-test-runner",
-      "phoenix-context-creator"
+      "phoenix-context-creator",
+      # Enforcement Skills (prevent shortcuts, ensure quality)
+      "elixir-discipline",
+      "elixir-tdd-enforcement",
+      "elixir-no-shortcuts",
+      "elixir-verification-gate",
+      "elixir-root-cause-only"
     ]
 
     Enum.each(skills_to_install, fn skill_name ->
