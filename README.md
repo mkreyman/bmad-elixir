@@ -2,9 +2,8 @@
 
 > BMAD-METHOD for Elixir/Phoenix - Bring the power of Agentic Agile Development to your Elixir projects!
 
-[![Hex.pm](https://img.shields.io/hexpm/v/bmad_elixir.svg)](https://hex.pm/packages/bmad_elixir)
-[![Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/bmad_elixir/)
-[![License](https://img.shields.io/hexpm/l/bmad_elixir.svg)](https://github.com/yourusername/bmad_elixir/blob/main/LICENSE)
+[![CI](https://github.com/mkreyman/bmad-elixir/actions/workflows/ci.yml/badge.svg)](https://github.com/mkreyman/bmad-elixir/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mkreyman/bmad-elixir/blob/master/LICENSE)
 
 Inspired by [BMAD-METHOD™](https://github.com/bmad-code-org/BMAD-METHOD), this package brings the proven Agentic Agile Development framework to Elixir and Phoenix projects with specialized AI agents, workflows, and quality gates tailored for the BEAM ecosystem.
 
