@@ -50,8 +50,8 @@ defmodule BmadElixir do
 
   For comprehensive documentation, see:
   - [README](README.md)
-  - [Agents](priv/agents/)
-  - [Workflows](priv/workflows/)
+  - [Agents on GitHub](https://github.com/mkreyman/bmad-elixir/tree/master/priv/agents)
+  - [Workflows on GitHub](https://github.com/mkreyman/bmad-elixir/tree/master/priv/workflows)
   - [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD)
   """
 
@@ -61,7 +61,7 @@ defmodule BmadElixir do
   ## Examples
 
       iex> BmadElixir.version()
-      "0.1.0"
+      "0.1.1"
 
   """
   def version do

@@ -496,7 +496,7 @@ Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/mkreyman/bmad-elixir/blob/master/LICENSE) for details.
 
 ## Roadmap
 

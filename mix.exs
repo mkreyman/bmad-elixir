@@ -1,7 +1,7 @@
 defmodule BmadElixir.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/mkreyman/bmad-elixir"
 
   def project do
@@ -57,7 +57,7 @@ defmodule BmadElixir.MixProject do
   defp package do
     [
       name: "bmad_elixir",
-      files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md),
+      files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md CONTRIBUTING.md),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
@@ -70,7 +70,7 @@ defmodule BmadElixir.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: ["README.md", "CHANGELOG.md", "CONTRIBUTING.md"],
       source_ref: "v#{@version}",
       source_url: @source_url
     ]
